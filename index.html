@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Storm Watch — DFW</title>
-<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800&family=Share+Tech+Mono&family=Barlow:wght@300;400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Barhlow+Condensed:wght@400;600;700;800&family=Share+Tech+Mono&family=Barlow:wght@300;400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
 <style>
 :root {
@@ -705,13 +705,13 @@ function loadRadar(){
       if(!d||!d.radar||!d.radar.past||!d.radar.past.length) return;
       radarFrameUrls=d.radar.past.slice(-6).map(function(f){return d.host+f.path;});
       radarIdx=radarFrameUrls.length-1;
-      radarLayer=L.tileLayer(radarFrameUrls[radarIdx]+'/512/{z}/{x}/{y}/6/1_1.png',{tileSize:512,opacity:0.65,zIndex:200,crossOrigin:true});
+      radarLayer=L.tileLayer(radarFrameUrls[radarIdx]+'/512/{z}/{x}/{y}/2/1_1.png',{tileSize:512,opacity:0.65,zIndex:200,crossOrigin:true});
       if(radarOn) radarLayer.addTo(map);
       if(radarAnimInterval) clearInterval(radarAnimInterval);
       radarAnimInterval=setInterval(function(){
         if(!radarOn||!radarLayer) return;
         radarIdx=(radarIdx+1)%radarFrameUrls.length;
-        radarLayer.setUrl(radarFrameUrls[radarIdx]+'/512/{z}/{x}/{y}/6/1_1.png');
+        radarLayer.setUrl(radarFrameUrls[radarIdx]+'/512/{z}/{x}/{y}/2/1_1.png');
       },800);
     }).catch(function(){});
 }
@@ -1023,10 +1023,10 @@ function finalize(){
       radarFrameUrls=d.radar.past.slice(-6).map(function(f){return d.host+f.path;});
       radarIdx=radarFrameUrls.length-1;
       if(radarLayer) map.removeLayer(radarLayer);
-      radarLayer=L.tileLayer(radarFrameUrls[radarIdx]+'/512/{z}/{x}/{y}/6/1_1.png',{tileSize:512,opacity:0.65,zIndex:200,crossOrigin:true});
+      radarLayer=L.tileLayer(radarFrameUrls[radarIdx]+'/512/{z}/{x}/{y}/2/1_1.png',{tileSize:512,opacity:0.65,zIndex:200,crossOrigin:true});
       if(radarOn) radarLayer.addTo(map);
       if(radarAnimInterval) clearInterval(radarAnimInterval);
-      radarAnimInterval=setInterval(function(){if(!radarOn||!radarLayer)return;radarIdx=(radarIdx+1)%radarFrameUrls.length;radarLayer.setUrl(radarFrameUrls[radarIdx]+'/512/{z}/{x}/{y}/6/1_1.png');},900);
+      radarAnimInterval=setInterval(function(){if(!radarOn||!radarLayer)return;radarIdx=(radarIdx+1)%radarFrameUrls.length;radarLayer.setUrl(radarFrameUrls[radarIdx]+'/512/{z}/{x}/{y}/2/1_1.png');},900);
     }).catch(function(){});
 }
 
