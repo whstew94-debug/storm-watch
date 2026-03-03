@@ -1,0 +1,1195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Storm Watch — DFW</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800&family=Share+Tech+Mono&family=Barlow:wght@300;400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
+<style>
+:root {
+  --bg:#060810;--surface:#0d1117;--surface2:#131922;--border:#1e2a3a;--border2:#243040;
+  --accent:#00d4ff;--accent-dim:rgba(0,212,255,0.12);--accent2:#ff5722;
+  --warn:#ffc107;--warn-dim:rgba(255,193,7,0.12);--danger:#f44336;--danger-dim:rgba(244,67,54,0.12);
+  --safe:#00e676;--safe-dim:rgba(0,230,118,0.1);--text:#dde3ee;--muted:#5a6a82;--muted2:#8a9ab8;
+  --fd:'Barlow Condensed',sans-serif;--fm:'Share Tech Mono',monospace;--fb:'Barlow',sans-serif;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--fb);overflow:hidden;}
+body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(0,0,0,0.04) 3px,rgba(0,0,0,0.04) 4px);pointer-events:none;z-index:9998;}
+
+.overlay{position:fixed;inset:0;background:rgba(3,5,10,0.96);display:flex;align-items:center;justify-content:center;z-index:9000;backdrop-filter:blur(6px);}
+.overlay.hidden{display:none;}
+.modal{background:var(--surface);border:1px solid var(--border2);border-top:2px solid var(--accent);padding:32px;width:440px;max-width:95vw;}
+.modal h2{font-family:var(--fd);font-size:2rem;font-weight:800;letter-spacing:3px;text-transform:uppercase;color:var(--accent);margin-bottom:2px;}
+.modal .sub{font-family:var(--fm);font-size:0.65rem;color:var(--muted);letter-spacing:2px;margin-bottom:24px;text-transform:uppercase;}
+.field{margin-bottom:14px;}
+.field label{display:block;font-family:var(--fm);font-size:0.6rem;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:5px;}
+.field input{width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:10px 14px;font-family:var(--fm);font-size:0.9rem;outline:none;transition:border-color 0.2s;}
+.field input:focus{border-color:var(--accent);}
+.field input::placeholder{color:var(--muted);}
+.btn{display:flex;align-items:center;justify-content:center;gap:8px;background:var(--accent);color:#000;border:none;padding:12px 24px;font-family:var(--fd);font-size:1rem;font-weight:700;letter-spacing:3px;text-transform:uppercase;cursor:pointer;width:100%;margin-top:6px;transition:all 0.15s;}
+.btn:hover{background:#33deff;transform:translateY(-1px);}
+.btn.sec{background:transparent;color:var(--accent);border:1px solid var(--border2);margin-top:8px;}
+.btn.sec:hover{border-color:var(--accent);background:var(--accent-dim);}
+.errmsg{font-family:var(--fm);font-size:0.68rem;color:var(--danger);margin-top:8px;display:none;}
+
+header{background:var(--surface);border-bottom:1px solid var(--border);padding:0 20px;height:52px;display:flex;align-items:center;justify-content:space-between;position:relative;z-index:600;box-shadow:0 1px 30px rgba(0,0,0,0.5);}
+.logo{font-family:var(--fd);font-size:1.4rem;font-weight:800;letter-spacing:4px;text-transform:uppercase;color:var(--accent);}
+.logo-sub{font-family:var(--fm);font-size:0.55rem;color:var(--muted);letter-spacing:3px;margin-top:2px;}
+.hdr-r{display:flex;align-items:center;gap:8px;}
+.alert-pill{background:var(--danger);color:#fff;font-family:var(--fm);font-size:0.58rem;padding:3px 10px;letter-spacing:2px;display:none;animation:alertpulse 1.2s infinite;}
+@keyframes alertpulse{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(244,67,54,0.4)}50%{opacity:0.8;box-shadow:0 0 0 6px rgba(244,67,54,0)}}
+.hbtn{background:transparent;border:1px solid var(--border);color:var(--muted);padding:5px 12px;font-family:var(--fm);font-size:0.62rem;cursor:pointer;letter-spacing:1px;text-transform:uppercase;transition:all 0.2s;}
+.hbtn:hover{border-color:var(--accent);color:var(--accent);}
+.hbtn.al{border-color:rgba(255,87,34,0.4);color:var(--accent2);}
+.hbtn.al:hover{border-color:var(--accent2);background:rgba(255,87,34,0.08);}
+.loc-pill{font-family:var(--fm);font-size:0.54rem;padding:3px 8px;border:1px solid var(--border);color:var(--muted);display:flex;align-items:center;gap:5px;}
+.loc-pill.on{border-color:rgba(0,230,118,0.4);color:var(--safe);}
+.loc-dot{width:6px;height:6px;border-radius:50%;background:var(--muted);flex-shrink:0;}
+.loc-dot.on{background:var(--safe);animation:blink 2s infinite;}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0.3}}
+
+.tabbar{background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:stretch;height:44px;position:relative;z-index:500;overflow-x:auto;}
+.tabbar::-webkit-scrollbar{display:none;}
+.tab{display:flex;align-items:center;gap:7px;padding:0 20px;font-family:var(--fd);font-size:0.85rem;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;transition:all 0.2s;white-space:nowrap;flex-shrink:0;}
+.tab:hover{color:var(--text);}
+.tab.active{color:var(--accent);border-bottom-color:var(--accent);}
+.tab-badge{background:var(--danger);color:#fff;font-family:var(--fm);font-size:0.48rem;padding:1px 4px;border-radius:2px;display:none;}
+.tab-badge.show{display:inline;animation:alertpulse 1.5s infinite;}
+
+.app{height:calc(100vh - 96px);position:relative;}
+.tab-panel{display:none;height:100%;overflow-y:auto;}
+.tab-panel.active{display:flex;flex-direction:column;}
+#tab-map{overflow:hidden;}
+
+.map-layout{display:flex;height:100%;}
+.map-sidebar{width:280px;min-width:280px;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;}
+.map-main{flex:1;position:relative;}
+#map{width:100%;height:100%;background:#0a0e16;}
+.msb-hd{font-family:var(--fm);font-size:0.58rem;letter-spacing:2px;text-transform:uppercase;color:var(--muted);padding:10px 14px 7px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;flex-shrink:0;}
+.msb-cnt{background:var(--border);color:var(--text);padding:1px 6px;font-size:0.52rem;font-family:var(--fm);}
+.msb-scroll{overflow-y:auto;max-height:200px;}
+.msb-alert-scroll{overflow-y:auto;flex:1;}
+.mini-mcard{padding:8px 14px;border-bottom:1px solid var(--border);cursor:pointer;transition:background 0.15s;}
+.mini-mcard:hover{background:var(--surface2);}
+.mini-mn{font-family:var(--fd);font-size:0.85rem;font-weight:600;letter-spacing:1px;display:flex;align-items:center;gap:6px;}
+.mini-ma{font-family:var(--fm);font-size:0.54rem;color:var(--muted);margin-top:1px;}
+.live-badge{font-family:var(--fm);font-size:0.42rem;background:var(--safe-dim);color:var(--safe);border:1px solid rgba(0,230,118,0.3);padding:1px 4px;letter-spacing:1px;animation:alertpulse 2s infinite;}
+
+.radar-controls{position:absolute;top:12px;left:12px;z-index:500;display:flex;flex-direction:column;gap:6px;}
+.radar-btn{background:rgba(6,8,16,0.92);border:1px solid var(--border);color:var(--muted);width:36px;height:36px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:1rem;transition:all 0.2s;}
+.radar-btn:hover,.radar-btn.on{border-color:var(--accent);color:var(--accent);background:var(--accent-dim);}
+.radar-legend{background:rgba(6,8,16,0.92);border:1px solid var(--border);padding:8px 10px;display:none;min-width:130px;}
+.radar-btn.on ~ .radar-legend{display:block;}
+.rl-title{font-family:var(--fm);font-size:0.5rem;letter-spacing:2px;color:var(--muted);text-transform:uppercase;margin-bottom:5px;}
+.rl-bar{height:8px;background:linear-gradient(to right,#00d4ff,#00ff88,#aaff00,#ffff00,#ff8800,#ff3300,#cc00cc);margin-bottom:3px;}
+.rl-labels{display:flex;justify-content:space-between;font-family:var(--fm);font-size:0.44rem;color:var(--muted);}
+
+.map-dpanel{position:absolute;top:12px;right:12px;z-index:500;background:rgba(6,8,16,0.96);border:1px solid var(--border2);border-top:2px solid var(--accent);padding:14px 16px;min-width:210px;display:none;}
+.map-dpanel.show{display:block;}
+.dp-name{font-family:var(--fd);font-size:1.1rem;font-weight:700;letter-spacing:2px;color:var(--accent);text-transform:uppercase;margin-bottom:10px;}
+.dp-row{display:flex;justify-content:space-between;font-family:var(--fm);font-size:0.6rem;color:var(--muted);padding:5px 0;border-bottom:1px solid var(--border);gap:8px;}
+.dp-row span{color:var(--text);text-align:right;}
+.dpclose{position:absolute;top:7px;right:10px;background:none;border:none;color:var(--muted);cursor:pointer;font-size:0.8rem;}
+
+.sbar{position:absolute;bottom:0;left:0;right:0;background:rgba(6,8,16,0.95);border-top:1px solid var(--border);padding:5px 14px;font-family:var(--fm);font-size:0.54rem;color:var(--muted);display:flex;gap:14px;align-items:center;z-index:400;}
+.sbar-dot{width:6px;height:6px;border-radius:50%;background:var(--safe);flex-shrink:0;}
+.sbar-dot.ld{background:var(--warn);animation:blink 1s infinite;}
+
+.page-content{padding:24px;max-width:1100px;margin:0 auto;width:100%;}
+.page-title{font-family:var(--fd);font-size:1.8rem;font-weight:800;letter-spacing:4px;text-transform:uppercase;color:var(--accent);margin-bottom:4px;}
+.page-sub{font-family:var(--fm);font-size:0.6rem;color:var(--muted);letter-spacing:2px;margin-bottom:24px;text-transform:uppercase;}
+.card{background:var(--surface);border:1px solid var(--border);padding:18px;}
+.card-hd{font-family:var(--fd);font-size:0.75rem;font-weight:700;letter-spacing:3px;text-transform:uppercase;color:var(--muted);margin-bottom:14px;border-bottom:1px solid var(--border);padding-bottom:8px;display:flex;align-items:center;justify-content:space-between;}
+.card-hd span{color:var(--accent);font-size:1rem;}
+.grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;}
+
+.sdot{width:9px;height:9px;border-radius:50%;flex-shrink:0;}
+.sdot.ok{background:var(--safe);}
+.sdot.w{background:var(--warn);animation:blink 1.5s infinite;}
+.sdot.d{background:var(--danger);animation:blink 1s infinite;}
+.atag{font-family:var(--fm);font-size:0.5rem;padding:1px 5px;display:inline-block;letter-spacing:1px;margin-top:3px;}
+.atag.ok{background:var(--safe-dim);color:var(--safe);border:1px solid rgba(0,230,118,0.25);}
+.atag.w{background:var(--warn-dim);color:var(--warn);border:1px solid rgba(255,193,7,0.3);}
+.atag.d{background:var(--danger-dim);color:var(--danger);border:1px solid rgba(244,67,54,0.3);}
+.admin-tag{font-family:var(--fm);font-size:0.48rem;background:rgba(255,87,34,0.12);color:var(--accent2);border:1px solid rgba(255,87,34,0.3);padding:1px 4px;letter-spacing:1px;}
+.privacy-tag{font-family:var(--fm);font-size:0.46rem;background:rgba(90,106,130,0.1);color:var(--muted);border:1px solid var(--border);padding:1px 5px;letter-spacing:1px;margin-left:4px;}
+
+.member-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;margin-top:16px;}
+.member-full-card{background:var(--surface);border:1px solid var(--border);padding:18px;position:relative;transition:border-color 0.2s;}
+.member-full-card.has-alert{border-left:3px solid var(--warn);}
+.member-full-card.has-danger{border-left:3px solid var(--danger);}
+.mfc-name{font-family:var(--fd);font-size:1.3rem;font-weight:700;letter-spacing:2px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.mfc-addr{font-family:var(--fm);font-size:0.6rem;color:var(--muted);margin:4px 0 6px;display:flex;align-items:center;gap:4px;flex-wrap:wrap;}
+.mfc-gps{font-family:var(--fm);font-size:0.54rem;color:var(--safe);margin-bottom:8px;}
+.mfc-status{display:flex;align-items:center;gap:10px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);}
+.checkin-badge{font-family:var(--fm);font-size:0.6rem;padding:3px 8px;letter-spacing:1px;border:1px solid;}
+.checkin-badge.safe{color:var(--safe);border-color:rgba(0,230,118,0.3);background:var(--safe-dim);}
+.checkin-badge.monitoring{color:var(--warn);border-color:rgba(255,193,7,0.3);background:var(--warn-dim);}
+.checkin-badge.help{color:var(--danger);border-color:rgba(244,67,54,0.3);background:var(--danger-dim);animation:alertpulse 1s infinite;}
+.checkin-badge.none{color:var(--muted);border-color:var(--border);background:transparent;}
+.checkin-row{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap;}
+.ci-btn{font-family:var(--fm);font-size:0.56rem;padding:5px 10px;letter-spacing:1px;cursor:pointer;border:1px solid var(--border);background:transparent;color:var(--muted);transition:all 0.15s;text-transform:uppercase;}
+.ci-btn:hover{border-color:var(--accent);color:var(--accent);}
+.ci-btn.active-safe{background:var(--safe-dim);border-color:rgba(0,230,118,0.4);color:var(--safe);}
+.ci-btn.active-monitoring{background:var(--warn-dim);border-color:rgba(255,193,7,0.4);color:var(--warn);}
+.ci-btn.active-help{background:var(--danger-dim);border-color:rgba(244,67,54,0.4);color:var(--danger);}
+.mfc-rm{position:absolute;top:10px;right:12px;background:none;border:none;color:var(--muted);cursor:pointer;font-size:0.75rem;opacity:0;transition:opacity 0.15s;}
+.member-full-card:hover .mfc-rm{opacity:1;}
+.mfc-rm:hover{color:var(--danger);}
+
+.forecast-header{background:var(--surface);border:1px solid var(--border);padding:18px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;gap:16px;}
+.fh-name{font-family:var(--fd);font-size:1.4rem;font-weight:700;letter-spacing:2px;color:var(--accent);}
+.fh-loc{font-family:var(--fm);font-size:0.62rem;color:var(--muted);margin-top:2px;}
+.fh-right{text-align:right;}
+.fh-temp{font-family:var(--fd);font-size:3rem;font-weight:800;color:var(--text);line-height:1;}
+.fh-cond{font-family:var(--fm);font-size:0.65rem;color:var(--muted);margin-top:4px;}
+.hourly-row{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;margin-bottom:16px;}
+.hourly-row::-webkit-scrollbar{height:3px;}
+.hourly-row::-webkit-scrollbar-thumb{background:var(--accent);}
+.hour-card{background:var(--surface);border:1px solid var(--border);padding:10px 14px;flex-shrink:0;min-width:80px;text-align:center;}
+.hour-time{font-family:var(--fm);font-size:0.56rem;color:var(--muted);margin-bottom:6px;}
+.hour-icon{font-size:1.2rem;margin-bottom:4px;}
+.hour-temp{font-family:var(--fd);font-size:1.1rem;font-weight:700;}
+.hour-precip{font-family:var(--fm);font-size:0.5rem;color:var(--accent);margin-top:3px;}
+.forecast-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;margin-bottom:16px;}
+.day-card{background:var(--surface);border:1px solid var(--border);padding:14px 10px;text-align:center;}
+.day-name{font-family:var(--fd);font-size:0.9rem;font-weight:700;letter-spacing:2px;color:var(--muted);margin-bottom:8px;}
+.day-icon{font-size:1.6rem;margin-bottom:8px;}
+.day-lo{color:var(--muted);font-size:0.85rem;}
+.day-short{font-family:var(--fm);font-size:0.52rem;color:var(--muted2);margin-top:4px;}
+.atmo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;}
+.atmo-card{background:var(--surface);border:1px solid var(--border);padding:14px;}
+.atmo-label{font-family:var(--fm);font-size:0.52rem;letter-spacing:2px;color:var(--muted);text-transform:uppercase;margin-bottom:6px;}
+.atmo-val{font-family:var(--fd);font-size:1.6rem;font-weight:700;}
+.atmo-unit{font-family:var(--fm);font-size:0.6rem;color:var(--muted);margin-left:4px;}
+.atmo-note{font-family:var(--fm);font-size:0.52rem;color:var(--muted2);margin-top:4px;}
+
+.alert-full-card{background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--warn);padding:16px;margin-bottom:10px;}
+.alert-full-card.ext{border-left-color:var(--danger);background:rgba(244,67,54,0.04);}
+.afc-top{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:10px;}
+.afc-event{font-family:var(--fd);font-size:1.2rem;font-weight:700;letter-spacing:2px;text-transform:uppercase;}
+.afc-sev{font-family:var(--fm);font-size:0.56rem;padding:2px 8px;letter-spacing:1px;border:1px solid;}
+.afc-sev.ext{color:var(--danger);border-color:rgba(244,67,54,0.4);background:var(--danger-dim);}
+.afc-sev.sev{color:var(--warn);border-color:rgba(255,193,7,0.4);background:var(--warn-dim);}
+.afc-area{font-family:var(--fm);font-size:0.62rem;color:var(--muted2);margin-bottom:8px;}
+.afc-time{display:flex;gap:16px;font-family:var(--fm);font-size:0.58rem;color:var(--muted);flex-wrap:wrap;}
+.afc-time span{color:var(--text);}
+.afc-desc{font-family:var(--fb);font-size:0.78rem;color:var(--muted2);margin-top:10px;line-height:1.5;display:none;border-top:1px solid var(--border);padding-top:10px;}
+.afc-toggle{font-family:var(--fm);font-size:0.58rem;color:var(--accent);cursor:pointer;background:none;border:none;padding:0;margin-top:6px;letter-spacing:1px;text-transform:uppercase;}
+
+.storm-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+.cape-meter{width:100%;height:12px;background:var(--border);margin:8px 0;overflow:hidden;}
+.cape-fill{height:100%;background:linear-gradient(to right,#00e676,#ffeb3b,#ff9800,#f44336);transition:width 1s ease;}
+.cape-label{font-family:var(--fm);font-size:0.52rem;color:var(--muted);display:flex;justify-content:space-between;}
+.shear-bars{display:flex;flex-direction:column;gap:8px;margin-top:8px;}
+.shear-row{display:flex;align-items:center;gap:10px;}
+.shear-lbl{font-family:var(--fm);font-size:0.56rem;color:var(--muted);width:60px;flex-shrink:0;}
+.shear-bar{flex:1;height:6px;background:var(--border);}
+.shear-fill{height:100%;background:var(--accent);transition:width 1s ease;}
+.shear-val{font-family:var(--fm);font-size:0.56rem;color:var(--text);width:50px;text-align:right;flex-shrink:0;}
+.report-item{padding:10px 0;border-bottom:1px solid var(--border);display:flex;gap:10px;align-items:flex-start;}
+.report-item:last-child{border-bottom:none;}
+.report-icon{font-size:1.2rem;flex-shrink:0;width:28px;text-align:center;}
+.report-type{font-family:var(--fd);font-size:0.78rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;}
+.report-loc{font-family:var(--fm);font-size:0.56rem;color:var(--muted);margin-top:2px;}
+
+.log-item{display:flex;gap:14px;padding:12px 0;border-bottom:1px solid var(--border);align-items:flex-start;}
+.log-time{font-family:var(--fm);font-size:0.56rem;color:var(--muted);flex-shrink:0;width:100px;padding-top:2px;}
+.log-icon{font-size:1rem;flex-shrink:0;width:24px;text-align:center;}
+.log-body{flex:1;}
+.log-title{font-family:var(--fd);font-size:0.88rem;font-weight:600;letter-spacing:1px;}
+.log-detail{font-family:var(--fm);font-size:0.56rem;color:var(--muted2);margin-top:2px;}
+.log-empty{font-family:var(--fm);font-size:0.7rem;color:var(--muted);text-align:center;padding:40px 0;}
+
+.leaflet-popup-content-wrapper{background:var(--surface) !important;border:1px solid var(--border2) !important;border-radius:0 !important;color:var(--text) !important;box-shadow:0 8px 30px rgba(0,0,0,0.8) !important;}
+.leaflet-popup-tip{background:var(--border2) !important;}
+.lp-name{font-family:var(--fd);font-size:0.9rem;font-weight:700;letter-spacing:2px;color:var(--accent);text-transform:uppercase;}
+.lp-loc{font-family:var(--fm);font-size:0.56rem;color:var(--muted);margin:3px 0 6px;}
+.lp-st{font-family:var(--fm);font-size:0.64rem;}
+.lp-live{font-family:var(--fm);font-size:0.5rem;color:var(--safe);margin-top:4px;}
+
+.invite-box{background:var(--bg);border:1px solid var(--border);padding:10px 12px;font-family:var(--fm);font-size:0.64rem;color:var(--accent);word-break:break-all;margin:12px 0;cursor:pointer;}
+.invite-box:hover{border-color:var(--accent);}
+.copy-note{font-family:var(--fm);font-size:0.56rem;color:var(--muted);text-align:center;}
+.copied{font-family:var(--fm);font-size:0.64rem;color:var(--safe);text-align:center;margin-top:5px;display:none;}
+
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--surface);border:1px solid var(--accent);color:var(--accent);font-family:var(--fm);font-size:0.7rem;padding:9px 18px;z-index:9999;opacity:0;transition:opacity 0.3s;pointer-events:none;white-space:nowrap;letter-spacing:1px;}
+.toast.show{opacity:1;}
+.loading-text{font-family:var(--fm);font-size:0.68rem;color:var(--muted);padding:30px;text-align:center;}
+
+@media(max-width:700px){
+  .map-sidebar{display:none;}
+  .storm-grid{grid-template-columns:1fr;}
+  .grid-3{grid-template-columns:1fr 1fr;}
+  .tab{padding:0 12px;font-size:0.75rem;}
+  .page-content{padding:16px;}
+  .forecast-header{flex-direction:column;}
+  .fh-right{text-align:left;}
+}
+@media(max-width:420px){
+  .grid-3{grid-template-columns:1fr;}
+  .tab span{display:none;}
+}
+</style>
+</head>
+<body>
+
+<!-- JOIN -->
+<div class="overlay hidden" id="joinOverlay">
+  <div class="modal">
+    <h2>Join Storm Watch</h2>
+    <p class="sub">You've been invited — enter your info</p>
+    <div class="field"><label>Your Nickname</label><input type="text" id="joinName" placeholder='e.g. "Rainy Day Rob"' maxlength="30"></div>
+    <div class="field"><label>Street Address</label><input type="text" id="joinStreet" placeholder="123 Main St"></div>
+    <div class="field"><label>City, State ZIP</label><input type="text" id="joinCity" placeholder="Dallas, TX 75201"></div>
+    <button class="btn" id="joinBtn" onclick="doJoin()">⚡ Join the Group</button>
+    <p class="errmsg" id="joinErr">Please fill in all fields.</p>
+  </div>
+</div>
+
+<!-- ADD MEMBER -->
+<div class="overlay hidden" id="addOverlay">
+  <div class="modal">
+    <h2>Add Member</h2>
+    <p class="sub">Manually add someone to the group</p>
+    <div class="field"><label>Nickname</label><input type="text" id="addName" placeholder="Nickname" maxlength="30"></div>
+    <div class="field"><label>Street Address</label><input type="text" id="addStreet" placeholder="Street address"></div>
+    <div class="field"><label>City, State ZIP</label><input type="text" id="addCity" placeholder="City, TX 76201"></div>
+    <button class="btn" id="addBtn" onclick="doAddMember()">+ Add to Group</button>
+    <p class="errmsg" id="addErr">Please fill in all fields.</p>
+    <button class="btn sec" onclick="closeAdd()">Cancel</button>
+  </div>
+</div>
+
+<!-- ADMIN LOGIN -->
+<div class="overlay hidden" id="adminOverlay">
+  <div class="modal">
+    <h2>Admin Access</h2>
+    <p class="sub">Enter password to unlock controls</p>
+    <div class="field"><label>Password</label><input type="password" id="adminPass" placeholder="Admin password" autocomplete="off"></div>
+    <button class="btn" onclick="doAdminLogin()">Unlock Admin</button>
+    <p class="errmsg" id="adminErr">Wrong password.</p>
+    <button class="btn sec" onclick="document.getElementById('adminOverlay').classList.add('hidden')">Cancel</button>
+  </div>
+</div>
+
+<!-- INVITE -->
+<div class="overlay hidden" id="inviteOverlay">
+  <div class="modal">
+    <h2>Invite Friends</h2>
+    <p class="sub">Share this link — they sign themselves up</p>
+    <div class="invite-box" id="inviteLinkBox" onclick="copyLink()"></div>
+    <p class="copy-note">↑ Click to copy</p>
+    <p class="copied" id="copiedMsg">✓ Copied!</p>
+    <p style="font-family:var(--fm);font-size:0.62rem;color:var(--muted);margin-top:12px;line-height:1.7;">Anyone with this link goes straight to sign-up. They'll appear on the map automatically with live location.</p>
+    <button class="btn sec" onclick="document.getElementById('inviteOverlay').classList.add('hidden')">Done</button>
+  </div>
+</div>
+
+<!-- HEADER -->
+<header>
+  <div class="logo">
+    <div>⛈ Storm Watch <span style="font-size:0.9rem;opacity:0.5;">DFW</span></div>
+    <div class="logo-sub">Live Group Weather Tracker</div>
+  </div>
+  <div class="hdr-r">
+    <div class="alert-pill" id="alertPill">⚠ ACTIVE ALERTS</div>
+    <div class="loc-pill" id="locPill"><div class="loc-dot" id="locDot"></div><span id="locText">Location off</span></div>
+    <button class="hbtn" onclick="refreshAll()">↻ Refresh</button>
+    <button class="hbtn" id="inviteBtn" style="display:none;" onclick="openInvite()">🔗 Invite</button>
+    <button class="hbtn al" id="adminBtn" onclick="handleAdminBtn()">⚙ Admin</button>
+  </div>
+</header>
+
+<!-- TABS -->
+<div class="tabbar">
+  <div class="tab active" id="t-map" onclick="switchTab('map')">🗺️ <span>Map</span></div>
+  <div class="tab" id="t-members" onclick="switchTab('members')">👥 <span>Members</span></div>
+  <div class="tab" id="t-forecast" onclick="switchTab('forecast')">📅 <span>Forecast</span></div>
+  <div class="tab" id="t-alerts" onclick="switchTab('alerts')">⚠️ <span>Alerts</span> <span class="tab-badge" id="alerts-badge">!</span></div>
+  <div class="tab" id="t-storm" onclick="switchTab('storm')">📊 <span>Storm Data</span></div>
+  <div class="tab" id="t-log" onclick="switchTab('log')">📝 <span>Event Log</span></div>
+</div>
+
+<div class="app">
+  <!-- MAP TAB -->
+  <div class="tab-panel active" id="tab-map">
+    <div class="map-layout">
+      <div class="map-sidebar">
+        <div class="msb-hd">Members <span class="msb-cnt" id="mapMemCount">0</span></div>
+        <div class="msb-scroll" id="mapMemberList"></div>
+        <div class="msb-hd">Active Alerts <span class="msb-cnt" id="mapAlertCount">0</span></div>
+        <div class="msb-alert-scroll" id="mapAlertList"><div class="loading-text">Loading NWS data</div></div>
+      </div>
+      <div class="map-main">
+        <div id="map"></div>
+        <div class="radar-controls">
+          <button class="radar-btn on" id="radarToggle" onclick="toggleRadar()" title="Toggle Radar">🌧</button>
+          <div id="radarLegend" class="radar-legend">
+            <div class="rl-title">Radar Intensity</div>
+            <div class="rl-bar"></div>
+            <div class="rl-labels"><span>Light</span><span>Moderate</span><span>Heavy</span></div>
+          </div>
+        </div>
+        <div class="map-dpanel" id="mapDpanel">
+          <button class="dpclose" onclick="document.getElementById('mapDpanel').classList.remove('show')">✕</button>
+          <div class="dp-name" id="dpName">—</div>
+          <div class="dp-row">Location <span id="dpLoc">—</span></div>
+          <div class="dp-row">GPS Updated <span id="dpGps">—</span></div>
+          <div class="dp-row">Alert Status <span id="dpAlert">—</span></div>
+          <div class="dp-row">Check-In <span id="dpCheckin">—</span></div>
+        </div>
+        <div class="sbar">
+          <div class="sbar-dot" id="sbarDot"></div>
+          <span id="sbarText">Loading...</span>
+          <span>|</span><span id="lastUpdate">—</span>
+          <span>|</span><span>NWS + RainViewer + Firebase Live</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MEMBERS TAB -->
+  <div class="tab-panel" id="tab-members" style="overflow-y:auto;">
+    <div class="page-content">
+      <div class="page-title">👥 Group Members</div>
+      <div class="page-sub" id="membersSub">Loading...</div>
+      <div class="grid-3" style="margin-bottom:20px;">
+        <div class="card" style="border-color:rgba(0,230,118,0.2);"><div class="card-hd">✅ Safe <span id="safeCount">0</span></div><div style="font-family:var(--fm);font-size:0.62rem;color:var(--muted);">Checked in safe</div></div>
+        <div class="card" style="border-color:rgba(255,193,7,0.2);"><div class="card-hd">👀 Monitoring <span id="monCount">0</span></div><div style="font-family:var(--fm);font-size:0.62rem;color:var(--muted);">Watching conditions</div></div>
+        <div class="card" style="border-color:rgba(244,67,54,0.2);"><div class="card-hd">🆘 Need Help <span id="helpCount">0</span></div><div style="font-family:var(--fm);font-size:0.62rem;color:var(--muted);">Requesting assistance</div></div>
+      </div>
+      <div class="member-grid" id="memberGrid"></div>
+      <div id="adminMemberActions" style="display:none;margin-top:20px;">
+        <button class="btn" style="max-width:240px;" onclick="openAdd()">+ Add Member Manually</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- FORECAST TAB -->
+  <div class="tab-panel" id="tab-forecast" style="overflow-y:auto;">
+    <div class="page-content">
+      <div class="page-title">📅 Forecast</div>
+      <div class="page-sub">Select a member to view their forecast</div>
+      <select id="forecastMemberSelect" onchange="loadForecast()" style="background:var(--surface);border:1px solid var(--border2);color:var(--text);padding:8px 14px;font-family:var(--fm);font-size:0.7rem;width:100%;max-width:320px;outline:none;cursor:pointer;margin-bottom:16px;display:block;"></select>
+      <div id="forecastContent"><div class="loading-text">Loading forecast</div></div>
+    </div>
+  </div>
+
+  <!-- ALERTS TAB -->
+  <div class="tab-panel" id="tab-alerts" style="overflow-y:auto;">
+    <div class="page-content">
+      <div class="page-title">⚠️ Active Alerts</div>
+      <div class="page-sub" id="alertsSub">Loading NWS data...</div>
+      <div id="alertsContent"><div class="loading-text">Fetching active alerts</div></div>
+    </div>
+  </div>
+
+  <!-- STORM DASHBOARD -->
+  <div class="tab-panel" id="tab-storm" style="overflow-y:auto;">
+    <div class="page-content">
+      <div class="page-title">📊 Storm Dashboard</div>
+      <div class="page-sub">Atmospheric conditions — DFW Region</div>
+      <div id="stormContent"><div class="loading-text">Loading storm data</div></div>
+    </div>
+  </div>
+
+  <!-- EVENT LOG -->
+  <div class="tab-panel" id="tab-log" style="overflow-y:auto;">
+    <div class="page-content">
+      <div class="page-title">📝 Storm Event Log</div>
+      <div class="page-sub">Auto-logged alerts and group activity</div>
+      <div id="logContent"></div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- FIREBASE -->
+<script type="module">
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
+import { getDatabase, ref, set, onValue, remove } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js';
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDVEuqqgaaKoB0eTGD0BWyaZcFNs3-_aFo",
+  authDomain: "storm-watch-dfw.firebaseapp.com",
+  databaseURL: "https://storm-watch-dfw-default-rtdb.firebaseio.com",
+  projectId: "storm-watch-dfw",
+  storageBucket: "storm-watch-dfw.firebasestorage.app",
+  messagingSenderId: "1001288185233",
+  appId: "1:1001288185233:web:3e51b9302cffdf79359630"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
+window.SW_DB = db;
+window.SW_REF = ref;
+window.SW_SET = set;
+window.SW_ONVALUE = onValue;
+window.SW_REMOVE = remove;
+window.SW_FIREBASE_READY = true;
+window.dispatchEvent(new Event('firebase-ready'));
+</script>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<script>
+var ADMIN_PASS='JunaSe23', INVITE_CODE='SW7742';
+var isAdmin=false, MY_MEMBER_ID=null;
+var allAlerts=[], map, markers={}, radarLayer=null, radarOn=true, alertGroup;
+var forecastLoaded=false, stormLoaded=false;
+var radarFrameUrls=[], radarIdx=0, radarAnimInterval=null;
+var locationWatchId=null, locationOn=false;
+var db, dbRef, dbSet, dbOnValue, dbRemove;
+
+// ── ADDRESS PRIVACY ──
+function displayAddress(mem){
+  if(isAdmin) return mem.address;
+  if(mem.id===MY_MEMBER_ID) return mem.address;
+  return cityState(mem.address);
+}
+function cityState(addr){
+  var parts=addr.split(',');
+  if(parts.length>=3) return parts[parts.length-2].trim()+', '+parts[parts.length-1].trim().split(' ')[0];
+  return parts[parts.length-1]||'Location hidden';
+}
+
+// ── LOCAL STORAGE (fallback + session) ──
+function loadMembers(){try{return JSON.parse(localStorage.getItem('sw_members')||'[]');}catch(e){return[];}}
+function saveMembers(a){localStorage.setItem('sw_members',JSON.stringify(a));}
+function loadLog(){try{return JSON.parse(localStorage.getItem('sw_log')||'[]');}catch(e){return[];}}
+function saveLog(a){localStorage.setItem('sw_log',JSON.stringify(a));}
+
+// Seed default member
+(function(){
+  var m=loadMembers();
+  m=m.filter(function(x){return x.name!=='Billy Stewart';});
+  saveMembers(m);
+  if(!m.find(function(x){return x.name==='The Weather Man';})){
+    m.unshift({id:'mem_0',name:'The Weather Man',address:'304 W Windsor Dr, Denton, TX 76207',lat:33.2148,lng:-97.1331,isAdmin:true,alertStatus:'clear',alertSummary:'No active alerts',conditions:'',checkin:'none',checkinTime:null,liveGps:false,gpsUpdated:null});
+    saveMembers(m);
+  }
+  MY_MEMBER_ID=localStorage.getItem('sw_my_id')||'mem_0';
+})();
+if(sessionStorage.getItem('sw_admin')==='1') isAdmin=true;
+
+// ── FIREBASE SYNC ──
+function initFirebase(){
+  db=window.SW_DB; dbRef=window.SW_REF; dbSet=window.SW_SET; dbOnValue=window.SW_ONVALUE; dbRemove=window.SW_REMOVE;
+  // Remove Billy Stewart from Firebase if present
+  dbOnValue(dbRef(db,'members'),function(snap){
+    var data=snap.val(); if(!data) return;
+    Object.values(data).forEach(function(mem){if(mem.name==='Billy Stewart')dbRemove(dbRef(db,'members/'+mem.id));});
+  },{onlyOnce:true});
+
+  // Push local members to Firebase if they aren't there yet
+  var members=loadMembers();
+  members.forEach(function(mem){
+    var r=dbRef(db,'members/'+mem.id);
+    dbOnValue(r,function(snap){
+      if(!snap.val()){
+        dbSet(r,{id:mem.id,name:mem.name,address:mem.address,lat:mem.lat||null,lng:mem.lng||null,isAdmin:mem.isAdmin||false,alertStatus:mem.alertStatus||'clear',alertSummary:mem.alertSummary||'No active alerts',checkin:mem.checkin||'none',liveGps:false,gpsUpdated:null});
+      }
+    },{onlyOnce:true});
+  });
+
+  // Listen for ALL member changes in real-time
+  var allMembersRef=dbRef(db,'members');
+  dbOnValue(allMembersRef,function(snap){
+    var data=snap.val();
+    if(!data) return;
+    var fbMembers=Object.values(data);
+    // Merge with local, Firebase wins for live fields
+    var localMembers=loadMembers();
+    fbMembers.forEach(function(fbMem){
+      var localIdx=localMembers.findIndex(function(m){return m.id===fbMem.id;});
+      if(localIdx>=0){
+        // Update live fields from Firebase
+        localMembers[localIdx].lat=fbMem.lat||localMembers[localIdx].lat;
+        localMembers[localIdx].lng=fbMem.lng||localMembers[localIdx].lng;
+        localMembers[localIdx].checkin=fbMem.checkin||'none';
+        localMembers[localIdx].alertStatus=fbMem.alertStatus||'clear';
+        localMembers[localIdx].alertSummary=fbMem.alertSummary||'No active alerts';
+        localMembers[localIdx].liveGps=fbMem.liveGps||false;
+        localMembers[localIdx].gpsUpdated=fbMem.gpsUpdated||null;
+      } else {
+        // New member joined via another device
+        localMembers.push(fbMem);
+        logEvent('👤','Joined: '+fbMem.name,fbMem.address||'');
+        showToast(fbMem.name+' joined Storm Watch!');
+      }
+    });
+    saveMembers(localMembers);
+    // Smoothly update map pins
+    updateMapPins(localMembers);
+    renderMapSidebar();
+    // Re-render members tab if open
+    if(document.getElementById('tab-members').classList.contains('active')) renderMembersTab();
+  });
+
+  // Start sharing your own location
+  startLocationSharing();
+}
+
+// ── LIVE LOCATION SHARING ──
+function startLocationSharing(){
+  if(!('geolocation' in navigator)) return;
+  if(locationWatchId!==null) navigator.geolocation.clearWatch(locationWatchId);
+
+  locationWatchId=navigator.geolocation.watchPosition(
+    function(pos){
+      var lat=pos.coords.latitude, lng=pos.coords.longitude;
+      locationOn=true;
+      document.getElementById('locDot').className='loc-dot on';
+      document.getElementById('locText').textContent='Live GPS';
+      document.getElementById('locPill').className='loc-pill on';
+
+      // Push to Firebase
+      if(db&&MY_MEMBER_ID){
+        dbSet(dbRef(db,'members/'+MY_MEMBER_ID+'/lat'),lat);
+        dbSet(dbRef(db,'members/'+MY_MEMBER_ID+'/lng'),lng);
+        dbSet(dbRef(db,'members/'+MY_MEMBER_ID+'/liveGps'),true);
+        dbSet(dbRef(db,'members/'+MY_MEMBER_ID+'/gpsUpdated'),new Date().toISOString());
+      }
+
+      // Update local
+      var members=loadMembers();
+      var me=members.find(function(m){return m.id===MY_MEMBER_ID;});
+      if(me){
+        var moved=!me.lat||Math.abs(me.lat-lat)>0.001||Math.abs(me.lng-lng)>0.001;
+        me.lat=lat; me.lng=lng; me.liveGps=true; me.gpsUpdated=new Date().toISOString();
+        saveMembers(members);
+        if(moved&&markers[MY_MEMBER_ID]){
+          markers[MY_MEMBER_ID].setLatLng([lat,lng]);
+        }
+        // Re-run weather check if moved significantly
+        if(moved) applyAlertsToMember(me);
+      }
+    },
+    function(err){
+      locationOn=false;
+      document.getElementById('locDot').className='loc-dot';
+      document.getElementById('locText').textContent='GPS unavailable';
+      document.getElementById('locPill').className='loc-pill';
+    },
+    {enableHighAccuracy:true, maximumAge:15000, timeout:10000}
+  );
+}
+
+function applyAlertsToMember(mem){
+  if(!mem.lat||!mem.lng) return;
+  var sev='clear',ev='No active alerts';
+  allAlerts.forEach(function(a){
+    var p=a.properties||{},event=p.event||'',area=(p.areaDesc||'').toLowerCase();
+    var parts=mem.address.split(','),city=parts.length>1?parts[parts.length-2].trim().toLowerCase():'';
+    var hit=city&&area.indexOf(city)!==-1;
+    if(!hit&&a.geometry){try{hit=checkPoint(mem.lat,mem.lng,a.geometry);}catch(e){}}
+    if(hit){
+      var isDanger=/tornado|extreme|exceptional/i.test(event+(p.severity||''));
+      var isWarn=/severe|warning|blizzard|ice storm|winter storm|hurricane|watch/i.test(event);
+      if(isDanger&&sev!=='danger'){sev='danger';ev=event;}
+      else if(isWarn&&sev==='clear'){sev='warn';ev=event;}
+    }
+  });
+  if(sev!==mem.alertStatus){
+    mem.alertStatus=sev; mem.alertSummary=ev;
+    var members=loadMembers();
+    var idx=members.findIndex(function(m){return m.id===mem.id;});
+    if(idx>=0){members[idx]=mem;saveMembers(members);}
+    if(db&&MY_MEMBER_ID===mem.id){
+      dbSet(dbRef(db,'members/'+mem.id+'/alertStatus'),sev);
+      dbSet(dbRef(db,'members/'+mem.id+'/alertSummary'),ev);
+    }
+    if(markers[mem.id]) markers[mem.id].setIcon(makeIcon(sev,mem.liveGps,mem.name,mem.id));
+  }
+}
+
+// ── TABS ──
+function switchTab(name){
+  document.querySelectorAll('.tab-panel').forEach(function(p){p.classList.remove('active');});
+  document.querySelectorAll('.tab').forEach(function(t){t.classList.remove('active');});
+  document.getElementById('tab-'+name).classList.add('active');
+  document.getElementById('t-'+name).classList.add('active');
+  if(name==='members') renderMembersTab();
+  if(name==='forecast'&&!forecastLoaded) loadForecast();
+  if(name==='alerts') renderAlertsTab();
+  if(name==='storm'&&!stormLoaded) loadStormDash();
+  if(name==='log') renderLog();
+  if(name==='map') setTimeout(function(){if(map)map.invalidateSize();},100);
+}
+
+// ── MAP ──
+function initMap(){
+  map=L.map('map').setView([32.85,-97.0],8);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{subdomains:'abcd',maxZoom:18,attribution:'© CartoDB'}).addTo(map);
+  alertGroup=L.layerGroup().addTo(map);
+  placeMarkers();
+  loadRadar();
+}
+
+function getInitials(name){
+  var parts=(name||'').trim().split(/\s+/);
+  if(parts.length>=2) return (parts[0][0]+(parts[parts.length-1][0])).toUpperCase();
+  return (parts[0]||'?').substring(0,2).toUpperCase();
+}
+function makeIcon(status, isLive, name, memberId){
+  var c=status==='danger'?'#f44336':status==='warn'?'#ffc107':'#00d4ff';
+  var glow=status==='danger'?'rgba(244,67,54,0.5)':status==='warn'?'rgba(255,193,7,0.4)':'rgba(0,212,255,0.4)';
+  var pulse=isLive?'animation:alertpulse 3s infinite;':'';
+  var inner=memberId==='mem_0'
+    ? '<span style="transform:rotate(45deg);font-size:18px;line-height:1;">🌪️</span>'
+    : '<span style="transform:rotate(45deg);font-size:11px;font-weight:800;font-family:sans-serif;color:'+c+';">'+getInitials(name||'')+'</span>';
+  return L.divIcon({className:'',iconSize:[38,38],iconAnchor:[19,38],popupAnchor:[0,-42],
+    html:'<div style="width:38px;height:38px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:2px solid '+c+';background:'+c+'22;display:flex;align-items:center;justify-content:center;box-shadow:0 0 14px '+glow+';'+pulse+'">'+inner+'</div>'
+  });
+}
+
+function popupHtml(mem){
+  var c=mem.alertStatus==='danger'?'#f44336':mem.alertStatus==='warn'?'#ffc107':'#00e676';
+  var locShow=cityState(mem.address);
+  var gpsTime=mem.gpsUpdated?new Date(mem.gpsUpdated).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):'—';
+  return '<div class="lp-name">'+esc(mem.name)+'</div><div class="lp-loc">📍 '+esc(locShow)+'</div><div class="lp-st" style="color:'+c+'">'+esc(mem.alertSummary||'No active alerts')+'</div>'+(mem.liveGps?'<div class="lp-live">📡 Live GPS — updated '+gpsTime+'</div>':'');
+}
+
+function placeMarkers(){
+  Object.values(markers).forEach(function(mk){try{mk.remove();}catch(e){}});
+  markers={};
+  loadMembers().forEach(function(mem){
+    if(!mem.lat||!mem.lng) return;
+    var mk=L.marker([mem.lat,mem.lng],{icon:makeIcon(mem.alertStatus||'clear',mem.liveGps,mem.name,mem.id)});
+    mk.bindPopup(popupHtml(mem));
+    mk.on('click',function(){showMapDetail(mem);});
+    mk.addTo(map);
+    markers[mem.id]=mk;
+  });
+}
+
+function updateMapPins(members){
+  // Smoothly move existing pins, add new ones, don't recreate all
+  members.forEach(function(mem){
+    if(!mem.lat||!mem.lng) return;
+    if(markers[mem.id]){
+      markers[mem.id].setLatLng([mem.lat,mem.lng]);
+      markers[mem.id].setIcon(makeIcon(mem.alertStatus||'clear',mem.liveGps,mem.name,mem.id));
+      markers[mem.id].setPopupContent(popupHtml(mem));
+    } else {
+      var mk=L.marker([mem.lat,mem.lng],{icon:makeIcon(mem.alertStatus||'clear',mem.liveGps,mem.name,mem.id)});
+      mk.bindPopup(popupHtml(mem));
+      mk.on('click',function(){showMapDetail(mem);});
+      mk.addTo(map);
+      markers[mem.id]=mk;
+    }
+  });
+}
+
+function showMapDetail(mem){
+  document.getElementById('dpName').textContent=mem.name;
+  document.getElementById('dpLoc').textContent=displayAddress(mem);
+  var c=mem.alertStatus==='danger'?'#f44336':mem.alertStatus==='warn'?'#ffc107':'#00e676';
+  document.getElementById('dpAlert').textContent=mem.alertSummary||'Clear';
+  document.getElementById('dpAlert').style.color=c;
+  var gpsTime=mem.gpsUpdated?new Date(mem.gpsUpdated).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})+(mem.liveGps?' 📡 Live':''):' —';
+  document.getElementById('dpGps').textContent=gpsTime;
+  var ciLabels={safe:'✅ Safe',monitoring:'👀 Monitoring',help:'🆘 Need Help',none:'Not checked in'};
+  document.getElementById('dpCheckin').textContent=ciLabels[mem.checkin||'none'];
+  document.getElementById('mapDpanel').classList.add('show');
+}
+
+// ── RADAR ──
+function loadRadar(){
+  fetch('https://api.rainviewer.com/public/weather-maps.json')
+    .then(function(r){return r.json();})
+    .then(function(d){
+      if(!d||!d.radar||!d.radar.past||!d.radar.past.length) return;
+      radarFrameUrls=d.radar.past.slice(-6).map(function(f){return d.host+f.path;});
+      radarIdx=radarFrameUrls.length-1;
+      radarLayer=L.tileLayer(radarFrameUrls[radarIdx]+'/512/{z}/{x}/{y}/6/1_1.png',{tileSize:512,opacity:0.65,zIndex:200,crossOrigin:true});
+      if(radarOn) radarLayer.addTo(map);
+      if(radarAnimInterval) clearInterval(radarAnimInterval);
+      radarAnimInterval=setInterval(function(){
+        if(!radarOn||!radarLayer) return;
+        radarIdx=(radarIdx+1)%radarFrameUrls.length;
+        radarLayer.setUrl(radarFrameUrls[radarIdx]+'/512/{z}/{x}/{y}/6/1_1.png');
+      },800);
+    }).catch(function(){});
+}
+
+function toggleRadar(){
+  if(!radarLayer) return;
+  if(radarOn){map.removeLayer(radarLayer);radarOn=false;document.getElementById('radarToggle').classList.remove('on');document.getElementById('radarLegend').style.display='none';}
+  else{radarLayer.addTo(map);radarOn=true;document.getElementById('radarToggle').classList.add('on');document.getElementById('radarLegend').style.display='block';}
+}
+
+// ── MAP SIDEBAR ──
+function renderMapSidebar(){
+  var members=loadMembers(),list=document.getElementById('mapMemberList');
+  list.innerHTML='';
+  document.getElementById('mapMemCount').textContent=members.length;
+  members.forEach(function(mem){
+    var st=mem.alertStatus||'clear',dc=st==='danger'?'d':st==='warn'?'w':'ok';
+    var div=document.createElement('div'); div.className='mini-mcard';
+    var liveTag=mem.liveGps?'<span class="live-badge">LIVE</span>':'';
+    div.innerHTML='<div class="mini-mn"><div class="sdot '+dc+'"></div>'+esc(mem.name)+liveTag+'</div><div class="mini-ma">📍 '+esc(cityState(mem.address))+'</div>';
+    div.onclick=function(){if(mem.lat&&mem.lng){map.setView([mem.lat,mem.lng],13);if(markers[mem.id])markers[mem.id].openPopup();showMapDetail(mem);}};
+    list.appendChild(div);
+  });
+}
+
+function renderMapAlerts(){
+  var list=document.getElementById('mapAlertList'); list.innerHTML='';
+  document.getElementById('mapAlertCount').textContent=allAlerts.length;
+  if(!allAlerts.length){list.innerHTML='<div style="padding:14px;font-family:var(--fm);font-size:0.64rem;color:var(--safe);">✓ No active alerts</div>';return;}
+  var seen={};
+  allAlerts.slice(0,20).forEach(function(a){
+    var p=a.properties||{},ev=p.event||'Alert',ar=(p.areaDesc||'').split(';')[0].trim();
+    var k=ev+ar; if(seen[k])return; seen[k]=true;
+    var ext=/tornado|extreme|exceptional/i.test(ev);
+    var d=document.createElement('div');
+    d.style.cssText='padding:8px 14px;border-bottom:1px solid var(--border);border-left:3px solid '+(ext?'var(--danger)':'var(--warn)')+';'+(ext?'background:var(--danger-dim);':'');
+    d.innerHTML='<div style="font-family:var(--fd);font-size:0.76rem;font-weight:700;">'+(ext?'⚠ ':'⚡ ')+esc(ev)+'</div><div style="font-family:var(--fm);font-size:0.54rem;color:var(--muted);margin-top:2px;">'+esc(ar)+'</div>';
+    list.appendChild(d);
+  });
+}
+
+// ── MEMBERS TAB ──
+function renderMembersTab(){
+  var members=loadMembers();
+  document.getElementById('membersSub').textContent=members.length+' members — live location active';
+  var safe=0,mon=0,help=0;
+  members.forEach(function(m){if(m.checkin==='safe')safe++;else if(m.checkin==='monitoring')mon++;else if(m.checkin==='help')help++;});
+  document.getElementById('safeCount').textContent=safe;
+  document.getElementById('monCount').textContent=mon;
+  document.getElementById('helpCount').textContent=help;
+
+  var grid=document.getElementById('memberGrid'); grid.innerHTML='';
+  members.forEach(function(mem){
+    var st=mem.alertStatus||'clear';
+    var dc=st==='danger'?'d':st==='warn'?'w':'ok';
+    var tc=st==='danger'?'d':st==='warn'?'w':'ok';
+    var tt=st==='danger'?'⚠ ALERT':st==='warn'?'⚡ WATCH':'✓ Clear';
+    var borderClass=st==='danger'?'has-danger':st==='warn'?'has-alert':'';
+    var ci=mem.checkin||'none';
+    var ciLabel={safe:'✅ Safe',monitoring:'👀 Monitoring',help:'🆘 Need Help',none:'Not checked in'};
+    var ciClass={safe:'safe',monitoring:'monitoring',help:'help',none:'none'};
+    var isMe=mem.id===MY_MEMBER_ID;
+    var addrDisplay=displayAddress(mem);
+    var addrSuffix=(!isAdmin&&!isMe)?'<span class="privacy-tag">🔒 city only</span>':'';
+    var gpsTime=mem.gpsUpdated?new Date(mem.gpsUpdated).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):'—';
+
+    var card=document.createElement('div');
+    card.className='member-full-card '+borderClass;
+    card.innerHTML=
+      '<div class="mfc-name"><div class="sdot '+dc+'"></div>'+esc(mem.name)+
+      (mem.isAdmin?' <span class="admin-tag">ADMIN</span>':'')+
+      (mem.liveGps?' <span class="live-badge">📡 LIVE</span>':'')+
+      (isMe?' <span style="font-family:var(--fm);font-size:0.48rem;color:var(--accent);border:1px solid rgba(0,212,255,0.3);padding:1px 5px;letter-spacing:1px;">YOU</span>':'')+
+      '</div>'+
+      '<div class="mfc-addr">📍 '+esc(addrDisplay)+addrSuffix+'</div>'+
+      (mem.liveGps?'<div class="mfc-gps">📡 Live GPS — last updated '+gpsTime+'</div>':'')+
+      '<span class="atag '+tc+'">'+tt+'</span>'+
+      (mem.alertSummary&&mem.alertSummary!=='No active alerts'?'<div style="font-family:var(--fm);font-size:0.58rem;color:var(--muted2);margin-top:4px;">'+esc(mem.alertSummary)+'</div>':'')+
+      '<div class="mfc-status"><span class="checkin-badge '+ciClass[ci]+'">'+ciLabel[ci]+'</span></div>'+
+      (isMe?'<div class="checkin-row">'+
+        '<button class="ci-btn'+(ci==='safe'?' active-safe':'')+'" onclick="doCheckin(\''+mem.id+'\',\'safe\')">✅ Safe</button>'+
+        '<button class="ci-btn'+(ci==='monitoring'?' active-monitoring':'')+'" onclick="doCheckin(\''+mem.id+'\',\'monitoring\')">👀 Monitoring</button>'+
+        '<button class="ci-btn'+(ci==='help'?' active-help':'')+'" onclick="doCheckin(\''+mem.id+'\',\'help\')">🆘 Need Help</button>'+
+        '</div>':'')+
+      (isAdmin&&!mem.isAdmin?'<button class="mfc-rm" onclick="removeMember(\''+mem.id+'\',event)">✕ Remove</button>':'');
+    grid.appendChild(card);
+  });
+  document.getElementById('adminMemberActions').style.display=isAdmin?'block':'none';
+}
+
+function doCheckin(memberId,status){
+  var members=loadMembers(), mem=members.find(function(m){return m.id===memberId;});
+  if(!mem) return;
+  mem.checkin=status; mem.checkinTime=new Date().toISOString();
+  saveMembers(members);
+  // Push to Firebase
+  if(db&&memberId===MY_MEMBER_ID){
+    dbSet(dbRef(db,'members/'+memberId+'/checkin'),status);
+    dbSet(dbRef(db,'members/'+memberId+'/checkinTime'),mem.checkinTime);
+  }
+  var labels={safe:'Checked in: Safe ✅',monitoring:'Monitoring conditions 👀',help:'Help requested 🆘'};
+  logEvent(status==='help'?'🆘':'✅','Check-In: '+mem.name,labels[status]);
+  renderMembersTab(); renderMapSidebar(); showToast(labels[status]);
+  if(status==='help'&&'Notification'in window&&Notification.permission==='granted')
+    new Notification('🆘 '+mem.name+' needs help!',{body:mem.address});
+}
+
+// ── FORECAST ──
+function populateForecastSelect(){
+  var sel=document.getElementById('forecastMemberSelect');
+  var prev=sel.value;
+  sel.innerHTML='';
+  loadMembers().forEach(function(m){
+    var opt=document.createElement('option');
+    opt.value=m.id;
+    opt.textContent=m.name+(m.id===MY_MEMBER_ID?' (You)':'')+(m.liveGps?' 📡':'');
+    sel.appendChild(opt);
+  });
+  if(prev) sel.value=prev;
+  if(!sel.value) sel.value=MY_MEMBER_ID;
+}
+
+async function loadForecast(){
+  forecastLoaded=true;
+  populateForecastSelect();
+  var selId=document.getElementById('forecastMemberSelect').value||MY_MEMBER_ID;
+  var me=loadMembers().find(function(m){return m.id===selId;});
+  if(!me||!me.lat||!me.lng){
+    document.getElementById('forecastContent').innerHTML='<div class="loading-text" style="color:var(--muted);">No location available for this member yet.</div>';
+    return;
+  }
+  document.getElementById('forecastContent').innerHTML='<div class="loading-text">Fetching forecast for '+esc(me.name)+'...</div>';
+  try{
+    var ptRes=await fetch('https://api.weather.gov/points/'+me.lat.toFixed(4)+','+me.lng.toFixed(4));
+    var ptData=await ptRes.json();
+    if(!ptData.properties) throw new Error('no point');
+    var [fcRes,hrRes,obsRes]=await Promise.all([fetch(ptData.properties.forecast),fetch(ptData.properties.forecastHourly),fetch(ptData.properties.observationStations)]);
+    var [fcData,hrData,obsData]=await Promise.all([fcRes.json(),hrRes.json(),obsRes.json()]);
+    var curObs=null,stId=obsData.features&&obsData.features[0]?obsData.features[0].properties.stationIdentifier:'';
+    if(stId){try{var cr=await fetch('https://api.weather.gov/stations/'+stId+'/observations/latest');curObs=(await cr.json()).properties;}catch(e){}}
+    renderForecast(me,fcData.properties.periods,hrData.properties.periods,curObs);
+  }catch(e){document.getElementById('forecastContent').innerHTML='<div class="loading-text" style="color:var(--muted);">Could not load forecast. Check connection.</div>';}
+}
+
+function tempToIcon(d){d=(d||'').toLowerCase();if(/thunder|storm/i.test(d))return'⛈';if(/tornado/i.test(d))return'🌪️';if(/snow|blizzard|freeze/i.test(d))return'❄️';if(/ice|sleet/i.test(d))return'🌨️';if(/rain|shower|drizzle/i.test(d))return'🌧️';if(/overcast/i.test(d))return'☁️';if(/partly|mostly cloudy/i.test(d))return'⛅';if(/wind/i.test(d))return'💨';if(/fog|haze/i.test(d))return'🌫️';if(/sunny|clear/i.test(d))return'☀️';return'🌡️';}
+
+function renderForecast(me,periods,hourly,curObs){
+  var cp=periods[0]||{};
+  var curTemp=curObs&&curObs.temperature&&curObs.temperature.value!=null?Math.round(curObs.temperature.value*9/5+32):cp.temperature;
+  var curDesc=curObs&&curObs.textDescription?curObs.textDescription:cp.shortForecast;
+  var dewF=curObs&&curObs.dewpoint&&curObs.dewpoint.value!=null?Math.round(curObs.dewpoint.value*9/5+32):null;
+  var windS=curObs&&curObs.windSpeed&&curObs.windSpeed.value!=null?Math.round(curObs.windSpeed.value*0.621)+' mph':cp.windSpeed;
+  var humidity=curObs&&curObs.relativeHumidity&&curObs.relativeHumidity.value!=null?Math.round(curObs.relativeHumidity.value)+'%':'—';
+  var vis=curObs&&curObs.visibility&&curObs.visibility.value!=null?Math.round(curObs.visibility.value*0.000621)+' mi':'—';
+  var gpsNote=me.liveGps?' <span style="font-family:var(--fm);font-size:0.52rem;color:var(--safe);">📡 Using live GPS</span>':'';
+
+  var html='<div class="forecast-header"><div><div class="fh-name">'+esc(me.name)+gpsNote+'</div><div class="fh-loc">📍 '+esc(me.address)+'</div></div><div class="fh-right"><div class="fh-temp">'+curTemp+'° <span style="font-size:2rem">'+tempToIcon(curDesc)+'</span></div><div class="fh-cond">'+esc(curDesc||'')+'</div></div></div>';
+  html+='<div class="atmo-grid" style="margin-bottom:20px;">';
+  html+='<div class="atmo-card"><div class="atmo-label">Dewpoint</div><div class="atmo-val">'+(dewF!=null?dewF+'<span class="atmo-unit">°F</span>':'—')+'</div><div class="atmo-note">'+(dewF!=null&&dewF>=65?'⚠ High — storm fuel':'Normal range')+'</div></div>';
+  html+='<div class="atmo-card"><div class="atmo-label">Humidity</div><div class="atmo-val">'+humidity+'</div><div class="atmo-note">Relative humidity</div></div>';
+  html+='<div class="atmo-card"><div class="atmo-label">Wind</div><div class="atmo-val" style="font-size:1.2rem;">'+esc(windS||'—')+'</div><div class="atmo-note">'+esc(cp.windDirection||'')+'</div></div>';
+  html+='<div class="atmo-card"><div class="atmo-label">Visibility</div><div class="atmo-val" style="font-size:1.2rem;">'+vis+'</div><div class="atmo-note">Current visibility</div></div>';
+  html+='</div>';
+  html+='<div style="font-family:var(--fm);font-size:0.58rem;letter-spacing:2px;color:var(--muted);margin-bottom:8px;text-transform:uppercase;">Next 12 Hours</div><div class="hourly-row">';
+  hourly.slice(0,12).forEach(function(h){
+    var dt=new Date(h.startTime),hr=dt.toLocaleTimeString([],{hour:'numeric',hour12:true});
+    var precip=h.probabilityOfPrecipitation&&h.probabilityOfPrecipitation.value!=null?h.probabilityOfPrecipitation.value+'%':'';
+    html+='<div class="hour-card"><div class="hour-time">'+hr+'</div><div class="hour-icon">'+tempToIcon(h.shortForecast)+'</div><div class="hour-temp">'+h.temperature+'°</div>'+(precip?'<div class="hour-precip">💧 '+precip+'</div>':'')+'</div>';
+  });
+  html+='</div>';
+  html+='<div style="font-family:var(--fm);font-size:0.58rem;letter-spacing:2px;color:var(--muted);margin-bottom:8px;text-transform:uppercase;">7-Day Outlook</div><div class="forecast-grid">';
+  for(var i=0;i<Math.min(periods.length,14);i+=2){
+    var day=periods[i]||{},night=periods[i+1]||{};
+    html+='<div class="day-card"><div class="day-name">'+esc((day.name||'').split(' ')[0])+'</div><div class="day-icon">'+tempToIcon(day.shortForecast)+'</div><div style="font-family:var(--fd);font-size:1rem;font-weight:600;">'+day.temperature+'° / <span class="day-lo">'+(night.temperature||'—')+'°</span></div><div class="day-short">'+esc((day.shortForecast||'').substring(0,25))+'</div></div>';
+  }
+  html+='</div>';
+  html+='<div style="font-family:var(--fm);font-size:0.58rem;letter-spacing:2px;color:var(--muted);margin-bottom:8px;text-transform:uppercase;">Detailed Forecast</div><div class="card"><div style="display:flex;flex-direction:column;gap:12px;">';
+  periods.slice(0,6).forEach(function(p){
+    html+='<div style="border-bottom:1px solid var(--border);padding-bottom:10px;"><div style="font-family:var(--fd);font-size:1rem;font-weight:700;letter-spacing:1px;margin-bottom:4px;">'+tempToIcon(p.shortForecast)+' '+esc(p.name)+' — '+p.temperature+'°F</div><div style="font-family:var(--fb);font-size:0.78rem;color:var(--muted2);line-height:1.5;">'+esc(p.detailedForecast)+'</div></div>';
+  });
+  html+='</div></div>';
+  document.getElementById('forecastContent').innerHTML=html;
+}
+
+// ── ALERTS TAB ──
+function renderAlertsTab(){
+  document.getElementById('alertsSub').textContent=allAlerts.length+' active alert'+(allAlerts.length!==1?'s':'');
+  var content=document.getElementById('alertsContent');
+  if(!allAlerts.length){content.innerHTML='<div style="font-family:var(--fm);font-size:0.78rem;color:var(--safe);padding:30px 0;">✓ No active weather alerts for your region.</div>';return;}
+  var html='';
+  allAlerts.forEach(function(a){
+    var p=a.properties||{},ev=p.event||'Alert',ar=(p.areaDesc||'').split(';').slice(0,3).join('; ');
+    var sev=p.severity||'',ext=/tornado|extreme|exceptional/i.test(ev+sev);
+    var onset=p.onset?new Date(p.onset).toLocaleString([],{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}):'—';
+    var ends=p.expires?new Date(p.expires).toLocaleString([],{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}):'—';
+    var desc=(p.description||'').substring(0,400);
+    var id='al_'+Math.random().toString(36).substr(2,6);
+    html+='<div class="alert-full-card'+(ext?' ext':'')+'"><div class="afc-top"><div class="afc-event">'+(ext?'⚠ ':'⚡ ')+esc(ev)+'</div><span class="afc-sev '+(ext?'ext':'sev')+'">'+esc(sev||'Active')+'</span></div>';
+    html+='<div class="afc-area">📍 '+esc(ar)+'</div><div class="afc-time">Issued: <span>'+onset+'</span><span style="margin-left:16px;">Expires: </span><span>'+ends+'</span></div>';
+    if(desc) html+='<div class="afc-desc" id="'+id+'">'+esc(desc)+(desc.length>=400?'…':'')+'</div><button class="afc-toggle" onclick="toggleAlertDesc(\''+id+'\',this)">▸ Show Details</button>';
+    html+='</div>';
+  });
+  content.innerHTML=html;
+}
+function toggleAlertDesc(id,btn){var el=document.getElementById(id);if(el.style.display==='block'){el.style.display='none';btn.textContent='▸ Show Details';}else{el.style.display='block';btn.textContent='▾ Hide Details';}}
+
+// ── STORM DASHBOARD ──
+async function loadStormDash(){
+  stormLoaded=true;
+  var me=loadMembers().find(function(m){return m.id===MY_MEMBER_ID;})||loadMembers()[0];
+  if(!me||!me.lat){document.getElementById('stormContent').innerHTML='<div class="loading-text" style="color:var(--muted);">No location set.</div>';return;}
+  var cape=0,shear6=0,shear1=0;
+  try{
+    var ptRes=await fetch('https://api.weather.gov/points/'+me.lat.toFixed(4)+','+me.lng.toFixed(4));
+    var ptData=await ptRes.json();
+    if(ptData.properties){
+      var hrRes=await fetch(ptData.properties.forecastHourly);
+      var hrData=await hrRes.json();
+      var np=hrData.properties&&hrData.properties.periods?hrData.properties.periods[0]:{};
+      var wv=parseInt((np.windSpeed||'0').replace(/[^0-9]/g,''))||0;
+      cape=Math.max(0,Math.round(((np.temperature||75)-55)*60+((np.temperature||75)>85?((np.temperature||75)-85)*40:0)));
+      shear6=Math.min(60,wv*2); shear1=Math.min(30,wv);
+    }
+  }catch(e){}
+  var capePct=Math.min(100,cape/4000*100);
+  var capeColor=cape<500?'var(--safe)':cape<1500?'var(--warn)':'var(--danger)';
+  var capeLabel=cape<500?'Low — minimal severe threat':cape<1500?'Moderate — storms possible':cape<2500?'High — severe storms likely':'Extreme — dangerous conditions';
+  var html='<div class="storm-grid">';
+  html+='<div class="card"><div class="card-hd">Instability (CAPE) <span>⚡</span></div><div style="font-family:var(--fm);font-size:0.56rem;color:var(--muted);margin-bottom:8px;">Convective Available Potential Energy</div><div style="font-family:var(--fd);font-size:2.5rem;font-weight:800;color:'+capeColor+';">'+cape+' <span style="font-size:1rem;color:var(--muted);">J/kg</span></div><div class="cape-meter"><div class="cape-fill" style="width:'+capePct+'%"></div></div><div class="cape-label"><span>0</span><span>1000</span><span>2500</span><span>4000+</span></div><div style="font-family:var(--fm);font-size:0.62rem;color:'+capeColor+';margin-top:10px;">'+capeLabel+'</div></div>';
+  html+='<div class="card"><div class="card-hd">Wind Shear <span>💨</span></div><div style="font-family:var(--fm);font-size:0.56rem;color:var(--muted);margin-bottom:12px;">Wind change with altitude</div><div class="shear-bars"><div class="shear-row"><div class="shear-lbl">0–1 km</div><div class="shear-bar"><div class="shear-fill" style="width:'+Math.min(100,shear1/30*100)+'%"></div></div><div class="shear-val">~'+shear1+' kt</div></div><div class="shear-row"><div class="shear-lbl">0–6 km</div><div class="shear-bar"><div class="shear-fill" style="width:'+Math.min(100,shear6/60*100)+'%"></div></div><div class="shear-val">~'+shear6+' kt</div></div></div><div style="font-family:var(--fm);font-size:0.56rem;color:var(--muted2);margin-top:12px;line-height:1.6;">0-6km &gt;40kt + high CAPE = supercell risk.</div></div>';
+  html+='</div>';
+  html+='<div class="card" style="margin-top:16px;"><div class="card-hd">Recent Storm Reports <span>📡</span></div><div id="stormReports"><div class="loading-text">Loading reports</div></div></div>';
+  html+='<div class="card" style="margin-top:16px;"><div class="card-hd">⚡ Know the Difference</div>';
+  [{label:'Advisory',color:'var(--muted2)',bg:'rgba(138,154,184,0.1)',border:'rgba(138,154,184,0.3)',desc:'Inconvenient, not dangerous. Be aware.'},
+   {label:'Watch',color:'var(--warn)',bg:'var(--warn-dim)',border:'rgba(255,193,7,0.3)',desc:'Conditions favor severe weather. Prepare NOW.'},
+   {label:'Warning',color:'var(--danger)',bg:'var(--danger-dim)',border:'rgba(244,67,54,0.3)',desc:'Severe weather imminent. TAKE SHELTER NOW.'},
+   {label:'Emergency',color:'#ff44ff',bg:'rgba(255,0,255,0.08)',border:'rgba(255,0,255,0.3)',desc:'Mass casualties possible. SEEK SHELTER IMMEDIATELY.'}
+  ].forEach(function(t){
+    html+='<div style="display:flex;gap:12px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--border);"><div style="font-family:var(--fd);font-size:0.76rem;font-weight:700;letter-spacing:2px;color:'+t.color+';background:'+t.bg+';border:1px solid '+t.border+';padding:3px 10px;flex-shrink:0;min-width:90px;text-align:center;">'+t.label+'</div><div style="font-family:var(--fb);font-size:0.76rem;color:var(--muted2);line-height:1.5;">'+t.desc+'</div></div>';
+  });
+  html+='</div>';
+  document.getElementById('stormContent').innerHTML=html;
+  fetch('https://api.weather.gov/alerts/active?area=TX&event=Local%20Storm%20Report')
+    .then(function(r){return r.json();})
+    .then(function(d){
+      var el=document.getElementById('stormReports'); if(!el) return;
+      if(!d||!d.features||!d.features.length){el.innerHTML='<div style="font-family:var(--fm);font-size:0.64rem;color:var(--safe);padding:10px 0;">✓ No recent storm reports.</div>';return;}
+      var h='';
+      d.features.slice(0,8).forEach(function(f){
+        var p=f.properties||{},ev=p.event||'Report',area=(p.areaDesc||'').split(';')[0];
+        var time=p.onset?new Date(p.onset).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):'—';
+        var icon=/tornado/i.test(ev)?'🌪️':/hail/i.test(ev)?'🧊':/wind/i.test(ev)?'💨':/flood/i.test(ev)?'🌊':'⛈';
+        h+='<div class="report-item"><div class="report-icon">'+icon+'</div><div style="flex:1"><div class="report-type">'+esc(ev)+'</div><div class="report-loc">'+esc(area)+'</div></div><div style="font-family:var(--fm);font-size:0.52rem;color:var(--muted);">'+time+'</div></div>';
+      });
+      el.innerHTML=h;
+    }).catch(function(){var el=document.getElementById('stormReports');if(el)el.innerHTML='<div style="font-family:var(--fm);font-size:0.64rem;color:var(--muted);">Report feed unavailable.</div>';});
+}
+
+// ── EVENT LOG ──
+function logEvent(icon,title,detail){
+  var log=loadLog(); log.unshift({icon:icon,title:title,detail:detail,time:new Date().toISOString()});
+  if(log.length>100) log=log.slice(0,100);
+  saveLog(log);
+}
+function renderLog(){
+  var log=loadLog(),el=document.getElementById('logContent');
+  if(!log.length){el.innerHTML='<div class="log-empty">No events yet.</div>';return;}
+  var html='';
+  log.forEach(function(item){
+    var dt=new Date(item.time),ts=dt.toLocaleDateString([],{month:'short',day:'numeric'})+' '+dt.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+    html+='<div class="log-item"><div class="log-time">'+ts+'</div><div class="log-icon">'+item.icon+'</div><div class="log-body"><div class="log-title">'+esc(item.title)+'</div><div class="log-detail">'+esc(item.detail)+'</div></div></div>';
+  });
+  el.innerHTML=html;
+}
+
+// ── WEATHER REFRESH ──
+function refreshAll(){
+  setStatus('ld','Fetching NWS alerts...');
+  var members=loadMembers(),states=[],done=0;
+  members.forEach(function(m){var p=m.address.split(',');if(p.length>=2){var s=p[p.length-1].trim().split(' ')[0].toUpperCase();if(s.length===2&&states.indexOf(s)===-1)states.push(s);}});
+  if(!states.length) states=['TX'];
+  allAlerts=[];
+  states.forEach(function(st){
+    fetch('https://api.weather.gov/alerts/active?area='+st)
+      .then(function(r){return r.json();})
+      .then(function(d){if(d&&d.features)allAlerts=allAlerts.concat(d.features);done++;if(done===states.length)finalize();})
+      .catch(function(){done++;if(done===states.length)finalize();});
+  });
+}
+
+function finalize(){
+  applyAlerts(); renderMapSidebar(); renderMapAlerts(); drawAlertPolygons();
+  allAlerts.forEach(function(a){
+    var p=a.properties||{},id=a.id;
+    if(id&&!sessionStorage.getItem('logged_'+id)){
+      sessionStorage.setItem('logged_'+id,'1');
+      logEvent(/tornado|extreme/i.test(p.event||'')?'⚠️':'⚡','NWS Alert: '+(p.event||'Alert'),(p.areaDesc||'').split(';')[0]);
+    }
+  });
+  var t=new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+  setStatus('ok','Updated '+t);
+  document.getElementById('lastUpdate').textContent='Refreshed '+t;
+  document.getElementById('alertPill').style.display=allAlerts.length?'block':'none';
+  document.getElementById('alerts-badge').classList.toggle('show',allAlerts.length>0);
+  fetch('https://api.rainviewer.com/public/weather-maps.json')
+    .then(function(r){return r.json();})
+    .then(function(d){
+      if(!d||!d.radar||!d.radar.past||!d.radar.past.length) return;
+      radarFrameUrls=d.radar.past.slice(-6).map(function(f){return d.host+f.path;});
+      radarIdx=radarFrameUrls.length-1;
+      if(radarLayer) map.removeLayer(radarLayer);
+      radarLayer=L.tileLayer(radarFrameUrls[radarIdx]+'/512/{z}/{x}/{y}/6/1_1.png',{tileSize:512,opacity:0.65,zIndex:200,crossOrigin:true});
+      if(radarOn) radarLayer.addTo(map);
+      if(radarAnimInterval) clearInterval(radarAnimInterval);
+      radarAnimInterval=setInterval(function(){if(!radarOn||!radarLayer)return;radarIdx=(radarIdx+1)%radarFrameUrls.length;radarLayer.setUrl(radarFrameUrls[radarIdx]+'/512/{z}/{x}/{y}/6/1_1.png');},900);
+    }).catch(function(){});
+}
+
+function applyAlerts(){
+  var members=loadMembers();
+  members.forEach(function(mem){
+    if(!mem.lat||!mem.lng) return;
+    var sev='clear',ev='No active alerts';
+    allAlerts.forEach(function(a){
+      var p=a.properties||{},event=p.event||'',area=(p.areaDesc||'').toLowerCase();
+      var parts=mem.address.split(','),city=parts.length>1?parts[parts.length-2].trim().toLowerCase():'';
+      var hit=city&&area.indexOf(city)!==-1;
+      if(!hit&&a.geometry){try{hit=checkPoint(mem.lat,mem.lng,a.geometry);}catch(e){}}
+      if(hit){
+        var isDanger=/tornado|extreme|exceptional/i.test(event+(p.severity||''));
+        var isWarn=/severe|warning|blizzard|ice storm|winter storm|hurricane|watch/i.test(event);
+        if(isDanger&&sev!=='danger'){sev='danger';ev=event;}
+        else if(isWarn&&sev==='clear'){sev='warn';ev=event;}
+      }
+    });
+    mem.alertStatus=sev; mem.alertSummary=ev;
+    if(markers[mem.id]){markers[mem.id].setIcon(makeIcon(sev,mem.liveGps,mem.name,mem.id));markers[mem.id].setPopupContent(popupHtml(mem));}
+    // Push alert status to Firebase for this member
+    if(db&&mem.id===MY_MEMBER_ID){
+      dbSet(dbRef(db,'members/'+mem.id+'/alertStatus'),sev);
+      dbSet(dbRef(db,'members/'+mem.id+'/alertSummary'),ev);
+    }
+  });
+  saveMembers(members);
+}
+
+function drawAlertPolygons(){
+  if(alertGroup) alertGroup.clearLayers();
+  allAlerts.forEach(function(a){
+    if(!a.geometry) return;
+    var ext=/tornado|extreme|exceptional/i.test((a.properties||{}).event||'');
+    try{var l=L.geoJSON(a.geometry,{style:{color:ext?'#f44336':'#ffc107',weight:1.5,fillOpacity:0.07,dashArray:ext?null:'5,5'}});l.addTo(alertGroup);}catch(e){}
+  });
+}
+
+function checkPoint(lat,lng,geo){
+  if(geo.type==='Polygon') return pip([lng,lat],geo.coordinates[0]);
+  if(geo.type==='MultiPolygon') return geo.coordinates.some(function(p){return pip([lng,lat],p[0]);});
+  return false;
+}
+function pip(pt,ring){
+  var x=pt[0],y=pt[1],inside=false;
+  for(var i=0,j=ring.length-1;i<ring.length;j=i++){
+    var xi=ring[i][0],yi=ring[i][1],xj=ring[j][0],yj=ring[j][1];
+    if(((yi>y)!==(yj>y))&&(x<(xj-xi)*(y-yi)/(yj-yi)+xi))inside=!inside;
+  }
+  return inside;
+}
+function setStatus(s,t){document.getElementById('sbarDot').className='sbar-dot'+(s==='ld'?' ld':'');document.getElementById('sbarText').textContent=t;}
+
+// ── GEOCODE ──
+function geocodeAddress(address,cb){
+  fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&q='+encodeURIComponent(address))
+    .then(function(r){return r.json();})
+    .then(function(d){cb(d&&d[0]?{lat:parseFloat(d[0].lat),lng:parseFloat(d[0].lon)}:null);})
+    .catch(function(){cb(null);});
+}
+
+// ── ADMIN ──
+function handleAdminBtn(){
+  if(isAdmin){lockAdmin();}
+  else{document.getElementById('adminOverlay').classList.remove('hidden');setTimeout(function(){document.getElementById('adminPass').focus();},100);}
+}
+function doAdminLogin(){
+  if(document.getElementById('adminPass').value.trim()===ADMIN_PASS){
+    isAdmin=true; sessionStorage.setItem('sw_admin','1');
+    document.getElementById('adminOverlay').classList.add('hidden');
+    document.getElementById('adminPass').value='';
+    document.getElementById('adminBtn').textContent='⚙ Admin ✓';
+    document.getElementById('inviteBtn').style.display='inline-block';
+    renderMapSidebar(); logEvent('🔑','Admin unlocked','Admin mode activated');
+    showToast('Admin mode unlocked.');
+  } else {
+    document.getElementById('adminErr').style.display='block';
+    setTimeout(function(){document.getElementById('adminErr').style.display='none';},3000);
+  }
+}
+document.getElementById('adminPass').addEventListener('keydown',function(e){if(e.key==='Enter')doAdminLogin();});
+function lockAdmin(){isAdmin=false;sessionStorage.removeItem('sw_admin');document.getElementById('adminBtn').textContent='⚙ Admin';document.getElementById('inviteBtn').style.display='none';renderMapSidebar();showToast('Admin mode locked.');}
+
+// ── JOIN ──
+function doJoin(){
+  var name=document.getElementById('joinName').value.trim(),street=document.getElementById('joinStreet').value.trim(),city=document.getElementById('joinCity').value.trim();
+  if(!name||!street||!city){document.getElementById('joinErr').style.display='block';return;}
+  document.getElementById('joinErr').style.display='none';
+  var btn=document.getElementById('joinBtn'); btn.textContent='Locating address...'; btn.style.opacity='0.6';
+  geocodeAddress(street+', '+city,function(coords){
+    var newId='mem_'+Date.now(),m=loadMembers();
+    var newMem={id:newId,name:name,address:street+', '+city,lat:coords?coords.lat:null,lng:coords?coords.lng:null,isAdmin:false,alertStatus:'clear',alertSummary:'No active alerts',conditions:'',checkin:'none',checkinTime:null,liveGps:false,gpsUpdated:null};
+    m.push(newMem); saveMembers(m);
+    localStorage.setItem('sw_my_id',newId); MY_MEMBER_ID=newId;
+    // Push to Firebase
+    if(db) dbSet(dbRef(db,'members/'+newId),newMem);
+    document.getElementById('joinOverlay').classList.add('hidden');
+    placeMarkers(); renderMapSidebar(); refreshAll();
+    logEvent('👤','Joined: '+name,street+', '+city);
+    showToast('Welcome to Storm Watch, '+name+'!');
+    requestNotifPermission();
+    startLocationSharing();
+    btn.textContent='⚡ Join the Group'; btn.style.opacity='1';
+  });
+}
+
+// ── ADD / REMOVE ──
+function openAdd(){document.getElementById('addOverlay').classList.remove('hidden');}
+function closeAdd(){document.getElementById('addOverlay').classList.add('hidden');['addName','addStreet','addCity'].forEach(function(id){document.getElementById(id).value='';});var b=document.getElementById('addBtn');b.textContent='+ Add to Group';b.style.opacity='1';}
+function doAddMember(){
+  var name=document.getElementById('addName').value.trim(),street=document.getElementById('addStreet').value.trim(),city=document.getElementById('addCity').value.trim();
+  if(!name||!street||!city){document.getElementById('addErr').style.display='block';return;}
+  document.getElementById('addErr').style.display='none';
+  var btn=document.getElementById('addBtn'); btn.textContent='Locating...'; btn.style.opacity='0.6';
+  geocodeAddress(street+', '+city,function(coords){
+    var newId='mem_'+Date.now(),m=loadMembers();
+    var newMem={id:newId,name:name,address:street+', '+city,lat:coords?coords.lat:null,lng:coords?coords.lng:null,isAdmin:false,alertStatus:'clear',alertSummary:'No active alerts',conditions:'',checkin:'none',checkinTime:null,liveGps:false,gpsUpdated:null};
+    m.push(newMem); saveMembers(m);
+    if(db) dbSet(dbRef(db,'members/'+newId),newMem);
+    closeAdd(); placeMarkers(); renderMapSidebar(); renderMembersTab();
+    logEvent('➕','Added: '+name,street+', '+city);
+    showToast(name+' added!');
+  });
+}
+function removeMember(id,e){
+  e.stopPropagation();
+  var mem=loadMembers().find(function(m){return m.id===id;}); if(!mem) return;
+  if(!confirm('Remove '+mem.name+' from the group?')) return;
+  saveMembers(loadMembers().filter(function(m){return m.id!==id;}));
+  if(db) dbRemove(dbRef(db,'members/'+id));
+  if(markers[id]){try{markers[id].remove();}catch(ex){} delete markers[id];}
+  logEvent('➖','Removed: '+mem.name,'Removed by admin');
+  renderMapSidebar(); renderMembersTab(); showToast(mem.name+' removed.');
+}
+
+// ── INVITE ──
+function openInvite(){var base=window.location.href.split('?')[0];document.getElementById('inviteLinkBox').textContent=base+'?invite='+INVITE_CODE;document.getElementById('inviteOverlay').classList.remove('hidden');}
+function copyLink(){navigator.clipboard.writeText(document.getElementById('inviteLinkBox').textContent).then(function(){var el=document.getElementById('copiedMsg');el.style.display='block';setTimeout(function(){el.style.display='none';},2500);}).catch(function(){showToast('Select and copy the link manually.');});}
+
+// ── NOTIFICATIONS ──
+function requestNotifPermission(){if('Notification'in window&&Notification.permission==='default')Notification.requestPermission().then(function(p){if(p==='granted')showToast('🔔 Notifications enabled!');});}
+
+// ── UTILS ──
+function esc(s){var d=document.createElement('div');d.textContent=s||'';return d.innerHTML;}
+function showToast(msg){var t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(function(){t.classList.remove('show');},3000);}
+
+// ── BOOT ──
+window.addEventListener('load',function(){
+  var params=new URLSearchParams(window.location.search);
+  if(params.get('invite')===INVITE_CODE) document.getElementById('joinOverlay').classList.remove('hidden');
+  if(isAdmin){document.getElementById('adminBtn').textContent='⚙ Admin ✓';document.getElementById('inviteBtn').style.display='inline-block';}
+  initMap();
+  renderMapSidebar();
+  refreshAll();
+  requestNotifPermission();
+  setInterval(refreshAll,600000);
+});
+
+// Wait for Firebase to be ready, then init sync
+if(window.SW_FIREBASE_READY){initFirebase();}
+else{window.addEventListener('firebase-ready',initFirebase);}
+</script>
+</body>
+</html>
