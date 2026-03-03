@@ -1,0 +1,1195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Storm Watch — DFW</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800&family=Share+Tech+Mono&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
+<style>
+:root {
+  --bg:#060810;--surface:#0d1117;--surface2:#131922;--border:#1e2a3a;--border2:#243040;
+  --cyan:#00e5ff;--cyan2:#00b8d4;--green:#00e676;--yellow:#ffea00;--orange:#ff6d00;
+  --red:#ff1744;--purple:#d500f9;--text:#e0f0ff;--text2:#7a9ab8;--text3:#4a6a88;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:'Barlow',sans-serif;height:100vh;display:flex;flex-direction:column;overflow:hidden}
+/* Header */
+#header{display:flex;align-items:center;padding:0 16px;height:52px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;gap:16px}
+#logo{display:flex;align-items:center;gap:10px;font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:22px;letter-spacing:2px;color:var(--cyan);text-transform:uppercase}
+#logo span{font-size:11px;font-weight:400;letter-spacing:3px;color:var(--text2);display:block;margin-top:-4px}
+#logo-icon{font-size:26px}
+#header-right{margin-left:auto;display:flex;align-items:center;gap:10px}
+.hdr-btn{background:transparent;border:1px solid var(--border);color:var(--text2);padding:5px 12px;border-radius:4px;cursor:pointer;font-size:12px;font-family:'Share Tech Mono',monospace;letter-spacing:1px;transition:all .2s}
+.hdr-btn:hover{border-color:var(--cyan);color:var(--cyan)}
+#gps-status{font-size:11px;color:var(--text3);font-family:'Share Tech Mono',monospace;display:flex;align-items:center;gap:5px}
+#gps-dot{width:7px;height:7px;border-radius:50%;background:var(--text3)}
+#gps-dot.active{background:var(--green);box-shadow:0 0 6px var(--green)}
+#admin-btn{border-color:var(--orange);color:var(--orange)}
+#admin-btn:hover{background:rgba(255,109,0,.1)}
+#telegram-btn{border-color:#229ed9;color:#229ed9}
+#telegram-btn:hover{background:rgba(34,158,217,.1)}
+/* Tabs */
+#tabs{display:flex;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;overflow-x:auto}
+.tab{padding:10px 18px;font-family:'Barlow Condensed',sans-serif;font-weight:600;font-size:13px;letter-spacing:1.5px;text-transform:uppercase;color:var(--text2);cursor:pointer;border-bottom:2px solid transparent;transition:all .2s;white-space:nowrap;display:flex;align-items:center;gap:6px}
+.tab:hover{color:var(--text);background:rgba(255,255,255,.03)}
+.tab.active{color:var(--cyan);border-bottom-color:var(--cyan);background:rgba(0,229,255,.05)}
+.tab-icon{font-size:14px}
+/* Layout */
+#main{display:flex;flex:1;overflow:hidden}
+#sidebar{width:240px;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0;overflow-y:auto}
+#content{flex:1;overflow:hidden;position:relative}
+.panel{display:none;height:100%;overflow-y:auto}
+.panel.active{display:flex;flex-direction:column}
+/* Map panel */
+#map-panel{display:none;height:100%;position:relative}
+#map-panel.active{display:block}
+#map{width:100%;height:100%}
+/* Sidebar sections */
+.sb-section{padding:10px 12px;border-bottom:1px solid var(--border)}
+.sb-title{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:11px;letter-spacing:2px;text-transform:uppercase;color:var(--text3);margin-bottom:8px;display:flex;align-items:center;justify-content:space-between}
+.sb-badge{background:var(--border);color:var(--text2);font-size:10px;padding:1px 6px;border-radius:10px;font-family:'Share Tech Mono',monospace}
+.sb-badge.alert{background:rgba(255,23,68,.2);color:var(--red);border:1px solid rgba(255,23,68,.3)}
+/* Member cards */
+.member-card{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:4px;cursor:pointer;transition:background .15s;margin-bottom:3px}
+.member-card:hover{background:var(--border)}
+.member-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.member-dot.online{background:var(--green);box-shadow:0 0 6px var(--green)}
+.member-dot.offline{background:var(--text3)}
+.member-info{flex:1;min-width:0}
+.member-name{font-size:13px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.member-loc{font-size:11px;color:var(--text2);font-family:'Share Tech Mono',monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.member-badge{font-size:9px;padding:1px 5px;border-radius:3px;font-family:'Barlow Condensed',sans-serif;font-weight:700;letter-spacing:1px}
+.member-badge.live{background:rgba(0,230,118,.15);color:var(--green);border:1px solid rgba(0,230,118,.3)}
+.member-badge.safe{background:rgba(0,229,255,.15);color:var(--cyan);border:1px solid rgba(0,229,255,.3)}
+/* Alert items */
+.alert-item{padding:6px 8px;border-radius:4px;background:rgba(255,23,68,.08);border-left:2px solid var(--red);margin-bottom:4px}
+.alert-event{font-size:12px;font-weight:600;color:var(--red)}
+.alert-area{font-size:11px;color:var(--text2);margin-top:2px}
+.no-alert{font-size:12px;color:var(--green);display:flex;align-items:center;gap:5px}
+/* Radar legend */
+#radar-legend{position:absolute;top:10px;left:10px;background:rgba(6,8,16,.85);border:1px solid var(--border);border-radius:6px;padding:8px 10px;z-index:1000;pointer-events:none}
+#radar-legend-title{font-size:10px;letter-spacing:2px;color:var(--text2);font-family:'Barlow Condensed',sans-serif;text-transform:uppercase;margin-bottom:5px}
+#radar-bar{height:8px;width:120px;background:linear-gradient(to right,#0000ff,#00ffff,#00ff00,#ffff00,#ff8800,#ff0000);border-radius:2px}
+#radar-labels{display:flex;justify-content:space-between;margin-top:3px}
+#radar-labels span{font-size:9px;color:var(--text3);font-family:'Share Tech Mono',monospace}
+/* Content panels */
+.panel-inner{padding:20px;max-width:900px;margin:0 auto;width:100%}
+.panel-title{font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:28px;letter-spacing:2px;text-transform:uppercase;color:var(--cyan);margin-bottom:4px}
+.panel-sub{font-size:13px;color:var(--text2);margin-bottom:20px}
+/* Cards */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:16px;margin-bottom:12px}
+.card-title{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;color:var(--text2);margin-bottom:10px;display:flex;align-items:center;gap:6px}
+/* Forecast */
+.forecast-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;margin-top:8px}
+.forecast-card{background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:14px 12px;text-align:left;cursor:pointer;transition:border-color .2s}
+.forecast-card:hover{border-color:var(--cyan2)}
+.fc-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.fc-day{font-size:12px;color:var(--cyan);font-family:'Barlow Condensed',sans-serif;letter-spacing:1.5px;text-transform:uppercase;font-weight:700}
+.fc-icon{font-size:28px}
+.fc-temp-row{display:flex;align-items:baseline;gap:6px;margin-bottom:6px}
+.fc-high{font-size:26px;font-weight:800;color:var(--text);font-family:'Barlow Condensed',sans-serif}
+.fc-low{font-size:14px;color:var(--text2);font-family:'Barlow Condensed',sans-serif}
+.fc-short{font-size:12px;font-weight:600;color:var(--text);margin-bottom:6px}
+.fc-detail{font-size:11px;color:var(--text2);line-height:1.5;margin-bottom:8px}
+.fc-meta{display:flex;flex-wrap:wrap;gap:6px}
+.fc-tag{font-size:10px;padding:2px 7px;border-radius:3px;background:var(--border);color:var(--text2);font-family:'Share Tech Mono',monospace}
+/* Hourly */
+.hourly-scroll{display:flex;gap:8px;overflow-x:auto;padding-bottom:8px}
+.hourly-item{flex-shrink:0;background:var(--surface2);border:1px solid var(--border);border-radius:5px;padding:8px;text-align:center;min-width:70px}
+.hi-time{font-size:10px;color:var(--text2);font-family:'Share Tech Mono',monospace}
+.hi-icon{font-size:20px;margin:3px 0}
+.hi-temp{font-size:15px;font-weight:700;color:var(--text);font-family:'Barlow Condensed',sans-serif}
+.hi-precip{font-size:10px;color:#00b8d4;margin-top:2px}
+/* Alert panel */
+.alert-card{background:rgba(255,23,68,.06);border:1px solid rgba(255,23,68,.2);border-radius:6px;padding:14px;margin-bottom:10px}
+.alert-card.moderate{background:rgba(255,109,0,.06);border-color:rgba(255,109,0,.3)}
+.alert-card.minor{background:rgba(255,234,0,.06);border-color:rgba(255,234,0,.2)}
+.alert-severity{font-size:10px;letter-spacing:2px;font-family:'Barlow Condensed',sans-serif;font-weight:700;text-transform:uppercase;margin-bottom:4px}
+.alert-title-big{font-size:16px;font-weight:700;font-family:'Barlow Condensed',sans-serif;letter-spacing:1px;margin-bottom:6px}
+.alert-desc{font-size:12px;color:var(--text2);line-height:1.5}
+.alert-meta{font-size:11px;color:var(--text3);margin-top:6px;font-family:'Share Tech Mono',monospace}
+/* Members panel */
+.members-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
+.member-full-card{background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:14px}
+.mfc-header{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.mfc-avatar{width:36px;height:36px;border-radius:50%;background:var(--border);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}
+.mfc-name{font-size:15px;font-weight:700;font-family:'Barlow Condensed',sans-serif;letter-spacing:1px}
+.mfc-loc{font-size:11px;color:var(--text2);font-family:'Share Tech Mono',monospace;margin-top:2px}
+.mfc-status{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.mfc-tag{font-size:10px;padding:2px 7px;border-radius:3px;font-family:'Barlow Condensed',sans-serif;font-weight:700;letter-spacing:1px}
+.checkin-btn{width:100%;margin-top:10px;padding:7px;background:rgba(0,230,118,.1);border:1px solid rgba(0,230,118,.3);color:var(--green);border-radius:4px;cursor:pointer;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;letter-spacing:1.5px;text-transform:uppercase;transition:all .2s}
+.checkin-btn:hover{background:rgba(0,230,118,.2)}
+/* Storm data */
+.storm-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;margin-top:10px}
+.storm-stat{background:var(--surface2);border:1px solid var(--border);border-radius:5px;padding:12px;text-align:center}
+.ss-label{font-size:10px;letter-spacing:2px;color:var(--text3);font-family:'Barlow Condensed',sans-serif;text-transform:uppercase}
+.ss-value{font-size:28px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:var(--cyan);margin:4px 0}
+.ss-unit{font-size:11px;color:var(--text2)}
+.ss-bar{height:4px;background:var(--border);border-radius:2px;margin-top:8px;overflow:hidden}
+.ss-fill{height:100%;border-radius:2px;background:linear-gradient(to right,var(--green),var(--yellow),var(--red));transition:width .5s}
+/* Event log */
+.log-item{display:flex;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)}
+.log-time{font-size:11px;color:var(--text3);font-family:'Share Tech Mono',monospace;white-space:nowrap;flex-shrink:0;padding-top:1px}
+.log-icon{font-size:14px;flex-shrink:0}
+.log-text{font-size:13px;color:var(--text2)}
+/* Status bar */
+#statusbar{height:28px;background:var(--surface);border-top:1px solid var(--border);display:flex;align-items:center;padding:0 14px;gap:16px;font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--text3);flex-shrink:0}
+#status-dot{width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 5px var(--green);flex-shrink:0}
+
+/* ── COLLAPSIBLE SIDEBAR ── */
+#sidebar{width:240px;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0;overflow-y:auto;transition:width .25s ease}
+#sidebar.collapsed{width:0;overflow:hidden;border-right:none}
+#sidebar-toggle{position:absolute;left:0;top:50%;transform:translateY(-50%);z-index:500;background:var(--surface);border:1px solid var(--border);border-left:none;color:var(--cyan);cursor:pointer;padding:6px 5px;border-radius:0 4px 4px 0;font-size:14px;line-height:1;transition:left .25s ease;display:none}
+#sidebar.collapsed + #content #sidebar-toggle,
+body.map-active #sidebar-toggle{display:block}
+/* Always show toggle on map tab */
+body.map-active #sidebar-toggle{display:block}
+#sidebar.collapsed ~ #content > #sidebar-toggle{left:0}
+
+/* ── MOBILE STYLES ── */
+@media(max-width:768px){
+  #header{padding:0 10px;height:48px;gap:8px}
+  #logo{font-size:17px}
+  #logo span{display:none}
+  #logo > div > span{display:none}
+  #gps-status{display:flex;font-size:11px;padding:3px 7px;border:1px solid var(--border);border-radius:4px;background:rgba(0,0,0,.3)}
+  .hdr-btn{padding:4px 8px;font-size:11px}
+  #tabs{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .tab{padding:8px 12px;font-size:12px}
+  #main{position:relative}
+  #sidebar{position:absolute;left:0;top:0;bottom:0;z-index:400;width:220px;transform:translateX(0);transition:transform .25s ease}
+  #sidebar.collapsed{transform:translateX(-100%);width:220px}
+  #sidebar-toggle{display:block!important;left:0;top:50%}
+  #sidebar.collapsed + #content #sidebar-toggle,
+  #sidebar:not(.collapsed) + #content #sidebar-toggle{display:block!important}
+  .panel-inner{padding:12px}
+  .panel-title{font-size:22px}
+  .forecast-grid{grid-template-columns:1fr}
+  .members-grid{grid-template-columns:1fr}
+  .storm-grid{grid-template-columns:repeat(auto-fill,minmax(130px,1fr))}
+  #statusbar{font-size:9px;gap:8px;padding:0 8px}
+  #statusbar span:nth-child(4),#statusbar span:nth-child(5),#statusbar span:nth-child(6){display:none}
+}
+@media(max-width:480px){
+  #logo{font-size:14px}
+  .tab{padding:7px 10px;font-size:11px;gap:3px}
+  .tab-icon{font-size:12px}
+  #header-right{gap:5px}
+  .hdr-btn{padding:3px 6px;font-size:10px;letter-spacing:0}
+}
+/* Modals */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;display:flex;align-items:center;justify-content:center}
+.modal{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:24px;width:360px;max-width:90vw}
+.modal-title{font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:22px;letter-spacing:2px;text-transform:uppercase;color:var(--cyan);margin-bottom:6px}
+.modal-sub{font-size:13px;color:var(--text2);margin-bottom:18px}
+.modal-input{width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:9px 12px;border-radius:4px;font-size:14px;font-family:'Share Tech Mono',monospace;margin-bottom:10px}
+.modal-input:focus{outline:none;border-color:var(--cyan)}
+.modal-btn{width:100%;padding:10px;border-radius:4px;cursor:pointer;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:15px;letter-spacing:1.5px;text-transform:uppercase;transition:all .2s;border:none}
+.modal-btn.primary{background:var(--cyan);color:var(--bg)}
+.modal-btn.primary:hover{background:var(--cyan2)}
+.modal-btn.secondary{background:transparent;border:1px solid var(--border);color:var(--text2);margin-top:8px}
+.modal-btn.secondary:hover{border-color:var(--text2);color:var(--text)}
+.modal-divider{border:none;border-top:1px solid var(--border);margin:14px 0}
+.modal-label{font-size:11px;letter-spacing:1.5px;color:var(--text3);font-family:'Barlow Condensed',sans-serif;text-transform:uppercase;margin-bottom:4px}
+/* Invite link box */
+.invite-box{background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:8px 10px;font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--cyan);word-break:break-all;margin-bottom:8px;cursor:pointer}
+.invite-box:hover{border-color:var(--cyan)}
+/* Telegram modal */
+.tg-step{background:var(--surface2);border:1px solid var(--border);border-radius:5px;padding:12px;margin-bottom:10px}
+.tg-step-num{font-size:10px;letter-spacing:2px;color:var(--cyan);font-family:'Barlow Condensed',sans-serif;font-weight:700;text-transform:uppercase;margin-bottom:4px}
+.tg-step-text{font-size:13px;color:var(--text2)}
+.tg-step-text a{color:var(--cyan);text-decoration:none}
+.tg-step-text code{background:var(--bg);padding:1px 5px;border-radius:3px;font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--yellow)}
+/* Scrollbar */
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:var(--bg)}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:var(--text3)}
+.hidden{display:none!important}
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div id="header">
+  <div id="logo">
+    <span id="logo-icon">⛈</span>
+    <div>
+      STORM WATCH <span style="display:inline;font-size:11px;color:var(--cyan2);margin-left:4px">DFW</span>
+      <span>LIVE GROUP WEATHER TRACKER</span>
+    </div>
+  </div>
+  <div id="header-right">
+    <div id="gps-status" onclick="requestGPS()" title="Tap to enable location" style="cursor:pointer"><div id="gps-dot"></div><span id="gps-text">Tap for GPS</span></div>
+    <button class="hdr-btn" onclick="refreshAll()">↻ REFRESH</button>
+    <button class="hdr-btn" id="telegram-btn" onclick="showTelegramModal()">✈ TELEGRAM</button>
+    <button class="hdr-btn" id="admin-btn" onclick="showAdminModal()">⚙ ADMIN</button>
+  </div>
+</div>
+
+<!-- Tabs -->
+<div id="tabs">
+  <div class="tab active" data-tab="map" onclick="switchTab('map')"><span class="tab-icon">🗺</span> MAP</div>
+  <div class="tab" data-tab="members" onclick="switchTab('members')"><span class="tab-icon">👥</span> MEMBERS</div>
+  <div class="tab" data-tab="forecast" onclick="switchTab('forecast')"><span class="tab-icon">📅</span> FORECAST</div>
+  <div class="tab" data-tab="alerts" onclick="switchTab('alerts')"><span class="tab-icon">⚠</span> ALERTS</div>
+  <div class="tab" data-tab="storm" onclick="switchTab('storm')"><span class="tab-icon">📊</span> STORM DATA</div>
+  <div class="tab" data-tab="log" onclick="switchTab('log')"><span class="tab-icon">📋</span> EVENT LOG</div>
+</div>
+
+<!-- Main -->
+<div id="main">
+  <!-- Sidebar -->
+  <div id="sidebar">
+    <div class="sb-section">
+      <div class="sb-title">MEMBERS <span class="sb-badge" id="member-count">0</span></div>
+      <div id="sidebar-members"></div>
+    </div>
+    <div class="sb-section">
+      <div class="sb-title">ACTIVE ALERTS <span class="sb-badge alert" id="alert-count">0</span></div>
+      <div id="sidebar-alerts"></div>
+    </div>
+  </div>
+
+  <!-- Content -->
+  <div id="content">
+    <button id="sidebar-toggle" onclick="toggleSidebar()" title="Toggle sidebar">◀</button>
+
+    <!-- MAP -->
+    <div id="map-panel" class="active">
+      <div id="map"></div>
+      <div id="radar-legend">
+        <div id="radar-legend-title">RADAR INTENSITY</div>
+        <div id="radar-bar"></div>
+        <div id="radar-labels"><span>Light</span><span>Moderate</span><span>Heavy</span></div>
+      </div>
+    </div>
+
+    <!-- MEMBERS -->
+    <div id="members-panel" class="panel">
+      <div class="panel-inner">
+        <div class="panel-title">Members</div>
+        <div class="panel-sub" id="member-panel-sub">Loading members...</div>
+        <div class="members-grid" id="members-grid"></div>
+      </div>
+    </div>
+
+    <!-- FORECAST -->
+    <div id="forecast-panel" class="panel">
+      <div class="panel-inner">
+        <div class="panel-title">Forecast</div>
+        <div class="panel-sub" id="forecast-location-label">Your location forecast</div>
+        <div class="card">
+          <div class="card-title">📅 7-DAY FORECAST</div>
+          <div class="forecast-grid" id="forecast-grid">Loading...</div>
+        </div>
+        <div class="card">
+          <div class="card-title">🕐 HOURLY (NEXT 12 HRS)</div>
+          <div class="hourly-scroll" id="hourly-scroll">Loading...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ALERTS -->
+    <div id="alerts-panel" class="panel">
+      <div class="panel-inner">
+        <div class="panel-title">Alerts</div>
+        <div class="panel-sub">Active NWS alerts for DFW region</div>
+        <div id="alerts-list"><div class="card"><div style="color:var(--text2);font-size:13px">Loading alerts...</div></div></div>
+      </div>
+    </div>
+
+    <!-- STORM DATA -->
+    <div id="storm-panel" class="panel">
+      <div class="panel-inner">
+        <div class="panel-title">Storm Data</div>
+        <div class="panel-sub">Atmospheric conditions for DFW</div>
+        <div class="card">
+          <div class="card-title">⚡ CONVECTIVE PARAMETERS</div>
+          <div class="storm-grid" id="storm-grid"></div>
+        </div>
+        <div class="card" id="storm-discussion-card">
+          <div class="card-title">📄 FORECAST DISCUSSION</div>
+          <div id="storm-discussion" style="font-size:12px;color:var(--text2);line-height:1.6">Loading...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- EVENT LOG -->
+    <div id="log-panel" class="panel">
+      <div class="panel-inner">
+        <div class="panel-title">Event Log</div>
+        <div class="panel-sub">Activity and weather events</div>
+        <div class="card">
+          <div id="event-log-list"></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Status bar -->
+<div id="statusbar">
+  <div id="status-dot"></div>
+  <span id="status-time">Updated --:-- --</span>
+  <span>|</span>
+  <span id="status-refresh">Refreshed --:-- --</span>
+  <span>|</span>
+  <span>NWS + RainViewer + Firebase Live</span>
+</div>
+
+<!-- Admin Modal -->
+<div id="admin-modal" class="modal-overlay hidden">
+  <div class="modal">
+    <div class="modal-title">Admin Panel</div>
+    <div class="modal-sub" id="admin-modal-sub">Enter admin password</div>
+    <div id="admin-login-section">
+      <input type="password" class="modal-input" id="admin-pw-input" placeholder="Password..." onkeydown="if(event.key==='Enter')checkAdminPw()">
+      <button class="modal-btn primary" onclick="checkAdminPw()">UNLOCK</button>
+      <button class="modal-btn secondary" onclick="hideModal('admin-modal')">CANCEL</button>
+    </div>
+    <div id="admin-panel-section" class="hidden">
+      <hr class="modal-divider">
+      <div class="modal-label">INVITE LINK</div>
+      <div class="invite-box" id="invite-link-box" onclick="copyInvite()">Click to generate...</div>
+      <button class="modal-btn primary" onclick="genInvite()">GENERATE INVITE LINK</button>
+      <hr class="modal-divider">
+      <div class="modal-label">DAILY FORECAST ALERT</div>
+      <button class="modal-btn secondary" onclick="sendDailyForecastAlert()" style="margin-top:0">📩 SEND DAILY FORECAST NOW</button>
+      <hr class="modal-divider">
+      <button class="modal-btn secondary" style="margin-top:0;border-color:var(--red);color:var(--red)" onclick="hideModal('admin-modal')">CLOSE</button>
+    </div>
+  </div>
+</div>
+
+<!-- Signup Modal -->
+<div id="signup-modal" class="modal-overlay hidden">
+  <div class="modal">
+    <div class="modal-title">Join Storm Watch</div>
+    <div class="modal-sub">You've been invited to the DFW Storm Watch group</div>
+    <div class="modal-label">YOUR NAME</div>
+    <input type="text" class="modal-input" id="signup-name" placeholder="Display name...">
+    <div class="modal-label">YOUR LOCATION</div>
+    <input type="text" class="modal-input" id="signup-location" placeholder="City, TX or ZIP code...">
+    <div class="modal-label">TELEGRAM CHAT ID <span style="color:var(--text3);font-weight:400">(optional — for alerts)</span></div>
+    <input type="text" class="modal-input" id="signup-telegram" placeholder="Your Telegram chat ID...">
+    <div style="font-size:11px;color:var(--text3);margin-bottom:12px">To get your chat ID: message <a href="https://t.me/userinfobot" target="_blank" style="color:var(--cyan)">@userinfobot</a> on Telegram</div>
+    <button class="modal-btn primary" onclick="doSignup()">JOIN THE GROUP</button>
+  </div>
+</div>
+
+<!-- Member Modal (view as) -->
+<div id="member-modal" class="modal-overlay hidden">
+  <div class="modal">
+    <div class="modal-title" id="member-modal-name">Member</div>
+    <div class="modal-sub" id="member-modal-loc"></div>
+    <button class="modal-btn primary" onclick="viewMemberForecast()">📅 VIEW THEIR FORECAST</button>
+    <button class="modal-btn secondary" onclick="hideModal('member-modal')">CLOSE</button>
+  </div>
+</div>
+
+<!-- Telegram Setup Modal -->
+<div id="telegram-modal" class="modal-overlay hidden">
+  <div class="modal" style="width:420px">
+    <div class="modal-title">Telegram Alerts</div>
+    <div class="modal-sub">Receive storm alerts via Telegram bot</div>
+    <div class="tg-step">
+      <div class="tg-step-num">STEP 1 — START THE BOT</div>
+      <div class="tg-step-text">Open Telegram and message <a href="https://t.me/StormWatchDFW_bot" target="_blank">@StormWatchDFW_bot</a> — send it <code>/start</code></div>
+    </div>
+    <div class="tg-step">
+      <div class="tg-step-num">STEP 2 — GET YOUR CHAT ID</div>
+      <div class="tg-step-text">Message <a href="https://t.me/userinfobot" target="_blank">@userinfobot</a> and it will reply with your numeric Chat ID</div>
+    </div>
+    <div class="tg-step">
+      <div class="tg-step-num">STEP 3 — SAVE YOUR CHAT ID</div>
+      <div class="tg-step-text">Paste your Chat ID below to receive alerts at your location</div>
+    </div>
+    <div class="modal-label" style="margin-top:10px">YOUR TELEGRAM CHAT ID</div>
+    <input type="text" class="modal-input" id="tg-chat-id-input" placeholder="e.g. 123456789">
+    <button class="modal-btn primary" onclick="saveTelegramId()">SAVE & ENABLE ALERTS</button>
+    <button class="modal-btn secondary" onclick="hideModal('telegram-modal')">CANCEL</button>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+import { getDatabase, ref, set, get, onValue, push, update } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDVEuqqgaaKoB0eTGD0BWyaZcFNs3-_aFo",
+  authDomain: "storm-watch-dfw.firebaseapp.com",
+  databaseURL: "https://storm-watch-dfw-default-rtdb.firebaseio.com",
+  projectId: "storm-watch-dfw",
+  storageBucket: "storm-watch-dfw.firebasestorage.app",
+  messagingSenderId: "1001288185233",
+  appId: "1:1001288185233:web:3e51b9302cffdf79359630"
+};
+
+const fbApp = initializeApp(firebaseConfig);
+const db = getDatabase(fbApp);
+
+// ─── TELEGRAM CONFIG ───────────────────────────────────────────────
+const TG_TOKEN = "8660731324:AAFrA2uy0S2Fwg4RRPH3657WlqA36Nd1qI8";
+const TG_API = `https://api.telegram.org/bot${TG_TOKEN}`;
+
+async function sendTelegram(chatId, message) {
+  if (!chatId) return;
+  try {
+    await fetch(`${TG_API}/sendMessage`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        chat_id: chatId,
+        text: message,
+        parse_mode: 'HTML'
+      })
+    });
+  } catch(e) { console.log('Telegram error:', e); }
+}
+
+async function sendTelegramToAll(message) {
+  const snap = await get(ref(db, 'members'));
+  if (!snap.exists()) return;
+  snap.forEach(child => {
+    const m = child.val();
+    if (m.telegramId) sendTelegram(m.telegramId, message);
+  });
+}
+
+async function sendTelegramToMember(memberId, message) {
+  const snap = await get(ref(db, `members/${memberId}`));
+  if (snap.exists() && snap.val().telegramId) {
+    sendTelegram(snap.val().telegramId, message);
+  }
+}
+
+// ─── STATE ─────────────────────────────────────────────────────────
+let currentUser = null; // the logged-in member's Firebase key
+let members = {};
+let activeAlerts = [];
+let eventLog = [];
+let map, radarLayer;
+let forecastLat = 33.2148, forecastLon = -97.1331; // default Denton
+let forecastMemberName = 'Your';
+let selectedMemberForModal = null;
+let isAdmin = false;
+const ADMIN_PW = "JunaSe23";
+const INVITE_CODE = "SW7742";
+
+// ─── INIT ──────────────────────────────────────────────────────────
+window.addEventListener('load', async () => {
+  initMap();
+  checkURLInvite();
+  loadCurrentUser();
+  listenMembers();
+  loadAlerts();
+  loadStormData();
+  startRefreshLoop();
+  logEvent('🌐', 'Storm Watch loaded');
+  updateStatusTime();
+  // Map is default tab — collapse sidebar for full radar view
+  document.getElementById('sidebar').classList.add('collapsed');
+  document.getElementById('sidebar-toggle').textContent = '▶';
+  document.body.classList.add('map-active');
+});
+
+// ─── CURRENT USER ──────────────────────────────────────────────────
+function loadCurrentUser() {
+  const saved = localStorage.getItem('sw_member_id');
+  if (saved) {
+    currentUser = saved;
+    autoRequestGPS(); // iOS-safe: only auto-fires on desktop
+  }
+}
+
+function requestGPS() {
+  if (!navigator.geolocation) {
+    document.getElementById('gps-text').textContent = 'GPS not supported';
+    return;
+  }
+  document.getElementById('gps-text').textContent = 'Locating...';
+  document.getElementById('gps-dot').classList.remove('active');
+  navigator.geolocation.getCurrentPosition(
+    pos => {
+      const lat = pos.coords.latitude, lon = pos.coords.longitude;
+      if (currentUser) {
+        update(ref(db, `members/${currentUser}`), { lat, lon, online: true });
+        forecastLat = lat;
+        forecastLon = lon;
+      }
+      document.getElementById('gps-dot').classList.add('active');
+      document.getElementById('gps-text').textContent = 'GPS active';
+      // Re-render markers now that we have coords
+      renderMemberMarkers();
+    },
+    err => {
+      document.getElementById('gps-dot').classList.remove('active');
+      if (err.code === 1) {
+        document.getElementById('gps-text').textContent = 'Blocked — check Settings';
+      } else if (err.code === 2) {
+        document.getElementById('gps-text').textContent = 'GPS unavailable';
+      } else {
+        document.getElementById('gps-text').textContent = 'Tap to retry';
+      }
+    },
+    { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 }
+  );
+}
+
+function autoRequestGPS() {
+  // iOS Safari blocks geolocation unless triggered by user gesture.
+  // Detect iOS and skip auto-request — user must tap the GPS button instead.
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+  const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+  if (isIOS || isSafari) {
+    document.getElementById('gps-text').textContent = 'Tap for GPS';
+    return; // User must tap the GPS status button
+  }
+  requestGPS();
+}
+
+function saveCurrentUser(key, lat, lon) {
+  currentUser = key;
+  localStorage.setItem('sw_member_id', key);
+  // Set forecast to this user's location
+  forecastLat = lat;
+  forecastLon = lon;
+}
+
+// ─── MAP ───────────────────────────────────────────────────────────
+function initMap() {
+  map = L.map('map', { zoomControl: true, attributionControl: true });
+  map.setView([32.9, -97.0], 7);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    attribution: '© CartoDB', maxZoom: 19, subdomains: 'abcd'
+  }).addTo(map);
+  loadRadar();
+}
+
+async function loadRadar() {
+  try {
+    const res = await fetch('https://api.rainviewer.com/public/weather-maps.json');
+    const data = await res.json();
+    const frames = data.radar?.past || [];
+    if (!frames.length) return;
+    const latest = frames[frames.length - 1];
+    if (radarLayer) map.removeLayer(radarLayer);
+    radarLayer = L.tileLayer(`https://tilecache.rainviewer.com${latest.path}/512/{z}/{x}/{y}/2/1_1.png`, {
+      opacity: 0.65, maxZoom: 15, zIndex: 200, crossOrigin: true
+    });
+    radarLayer.addTo(map);
+  } catch(e) { console.log('Radar error', e); }
+}
+
+// ─── MEMBERS ───────────────────────────────────────────────────────
+function listenMembers() {
+  onValue(ref(db, 'members'), snap => {
+    members = {};
+    if (snap.exists()) snap.forEach(c => { members[c.key] = c.val(); });
+    renderSidebarMembers();
+    renderMembersPanel();
+    renderMemberMarkers();
+    document.getElementById('member-count').textContent = Object.keys(members).length;
+    // Update forecast location if currentUser loaded
+    if (currentUser && members[currentUser]) {
+      const me = members[currentUser];
+      if (me.lat && me.lon) {
+        forecastLat = me.lat;
+        forecastLon = me.lon;
+        forecastMemberName = 'Your';
+        if (document.getElementById('forecast-panel').classList.contains('active')) {
+          loadForecast();
+        }
+      }
+    }
+  });
+}
+
+function renderSidebarMembers() {
+  const el = document.getElementById('sidebar-members');
+  el.innerHTML = '';
+  Object.entries(members).forEach(([key, m]) => {
+    const div = document.createElement('div');
+    div.className = 'member-card';
+    div.onclick = () => openMemberModal(key);
+    div.innerHTML = `
+      <div class="member-dot ${m.online ? 'online' : 'offline'}"></div>
+      <div class="member-info">
+        <div class="member-name">${m.name}</div>
+        <div class="member-loc">📍 ${m.city || m.zip || 'Unknown'}</div>
+      </div>
+      ${m.online ? '<span class="member-badge live">LIVE</span>' : ''}
+      ${m.checkedIn ? '<span class="member-badge safe">SAFE</span>' : ''}
+    `;
+    el.appendChild(div);
+  });
+}
+
+function renderMembersPanel() {
+  const grid = document.getElementById('members-grid');
+  const sub = document.getElementById('member-panel-sub');
+  const count = Object.keys(members).length;
+  sub.textContent = `${count} member${count !== 1 ? 's' : ''} in the group`;
+  grid.innerHTML = '';
+  Object.entries(members).forEach(([key, m]) => {
+    const div = document.createElement('div');
+    div.className = 'member-full-card';
+    const isMe = key === currentUser;
+    div.innerHTML = `
+      <div class="mfc-header">
+        <div class="mfc-avatar">${m.name ? m.name[0].toUpperCase() : '?'}</div>
+        <div>
+          <div class="mfc-name">${m.name}${isMe ? ' <span style="color:var(--cyan);font-size:10px">(YOU)</span>' : ''}</div>
+          <div class="mfc-loc">📍 ${m.city || m.zip || 'Unknown'}</div>
+        </div>
+      </div>
+      <div class="mfc-status">
+        ${m.online ? '<span class="mfc-tag" style="background:rgba(0,230,118,.15);color:var(--green);border:1px solid rgba(0,230,118,.3)">LIVE</span>' : '<span class="mfc-tag" style="background:var(--border);color:var(--text3)">OFFLINE</span>'}
+        ${m.checkedIn ? '<span class="mfc-tag" style="background:rgba(0,229,255,.15);color:var(--cyan);border:1px solid rgba(0,229,255,.3)">✓ SAFE</span>' : ''}
+      </div>
+      ${isMe ? `<button class="checkin-btn" onclick="doCheckin('${key}')">${m.checkedIn ? '✓ CHECKED IN SAFE' : 'CHECK IN AS SAFE'}</button>` : `<button class="checkin-btn" style="background:rgba(0,229,255,.07);border-color:rgba(0,229,255,.2);color:var(--cyan2)" onclick="viewMemberForecastDirect('${key}')">📅 VIEW FORECAST</button>`}
+    `;
+    grid.appendChild(div);
+  });
+}
+
+let memberMarkers = {};
+async function renderMemberMarkers() {
+  Object.values(memberMarkers).forEach(m => m.remove());
+  memberMarkers = {};
+  for (const [key, m] of Object.entries(members)) {
+    let lat = m.lat, lon = m.lon;
+    // Fallback: geocode city/zip if no GPS coords stored yet
+    if ((!lat || !lon) && (m.city || m.zip)) {
+      try {
+        const query = encodeURIComponent(m.zip || m.city);
+        const r = await fetch(`https://nominatim.openstreetmap.org/search?q=${query}&format=json&limit=1&countrycodes=us`);
+        const d = await r.json();
+        if (d.length) { lat = parseFloat(d[0].lat); lon = parseFloat(d[0].lon); }
+      } catch(e) {}
+    }
+    if (!lat || !lon) continue;
+    const icon = L.divIcon({
+      html: `<div style="display:flex;flex-direction:column;align-items:center">
+        <div style="background:${m.online ? 'var(--cyan)' : 'var(--text3)'};width:14px;height:14px;border-radius:50%;border:2px solid var(--bg);box-shadow:0 0 ${m.online ? '10px var(--cyan)' : 'none'}"></div>
+        <div style="background:rgba(6,8,16,.85);color:${m.online ? 'var(--cyan)' : 'var(--text2)'};font-size:9px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:1px;padding:1px 4px;border-radius:2px;white-space:nowrap;margin-top:2px;border:1px solid var(--border)">${m.name}</div>
+      </div>`,
+      className: '', iconSize: [60, 30], iconAnchor: [30, 8]
+    });
+    const marker = L.marker([lat, lon], { icon })
+      .addTo(map)
+      .bindPopup(`<b style="color:#00e5ff">${m.name}</b><br><small>${m.city || m.zip || ''}</small>${m.checkedIn ? '<br><span style="color:#00e676">✓ Checked in safe</span>' : ''}`);
+    memberMarkers[key] = marker;
+  }
+}
+
+// ─── CHECK IN ──────────────────────────────────────────────────────
+window.doCheckin = async function(memberId) {
+  const m = members[memberId];
+  const wasCheckedIn = m?.checkedIn;
+  await update(ref(db, `members/${memberId}`), { checkedIn: !wasCheckedIn });
+  if (!wasCheckedIn) {
+    logEvent('✅', `${m?.name || 'Member'} checked in as safe`);
+    // Notify all members via Telegram
+    const msg = `✅ <b>${m?.name || 'A member'}</b> has checked in as <b>SAFE</b> on Storm Watch DFW!`;
+    sendTelegramToAll(msg);
+  }
+};
+
+// ─── FORECAST ──────────────────────────────────────────────────────
+async function loadForecast(lat, lon, memberName) {
+  // Use currentUser's location if available and no override given
+  if (!lat || !lon) {
+    if (currentUser && members[currentUser]?.lat) {
+      lat = members[currentUser].lat;
+      lon = members[currentUser].lon;
+      memberName = 'Your';
+    } else {
+      lat = forecastLat;
+      lon = forecastLon;
+      memberName = forecastMemberName;
+    }
+  }
+  const label = memberName === 'Your' ? 'Your location forecast' : `${memberName}'s forecast (${await getCityName(lat, lon)})`;
+  document.getElementById('forecast-location-label').textContent = label;
+
+  try {
+    const ptRes = await fetch(`https://api.weather.gov/points/${lat},${lon}`);
+    if (!ptRes.ok) throw new Error('NWS points failed');
+    const ptData = await ptRes.json();
+    const [fRes, hRes] = await Promise.all([
+      fetch(ptData.properties.forecast),
+      fetch(ptData.properties.forecastHourly)
+    ]);
+    const [fData, hData] = await Promise.all([fRes.json(), hRes.json()]);
+    renderForecast(fData.properties.periods);
+    renderHourly(hData.properties.periods.slice(0, 12));
+  } catch(e) {
+    document.getElementById('forecast-grid').innerHTML = '<div style="color:var(--text3);font-size:13px">Could not load forecast for this location.</div>';
+  }
+}
+
+async function getCityName(lat, lon) {
+  try {
+    const r = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`);
+    const d = await r.json();
+    return d.address?.city || d.address?.town || d.address?.county || `${lat.toFixed(2)}, ${lon.toFixed(2)}`;
+  } catch { return `${lat.toFixed(2)}, ${lon.toFixed(2)}`; }
+}
+
+function renderForecast(periods) {
+  const grid = document.getElementById('forecast-grid');
+  grid.innerHTML = '';
+  // Pair day + night periods for full context
+  const days = [];
+  for (let i = 0; i < periods.length && days.length < 7; i++) {
+    if (periods[i].isDaytime) {
+      days.push({ day: periods[i], night: periods[i + 1] || null });
+    }
+  }
+  days.forEach(({ day, night }) => {
+    const card = document.createElement('div');
+    card.className = 'forecast-card';
+    const precip = day.probabilityOfPrecipitation?.value;
+    const wind = day.windSpeed && day.windDirection ? `${day.windDirection} ${day.windSpeed}` : null;
+    const dewpoint = day.dewpoint?.value != null ? Math.round(day.dewpoint.value * 9/5 + 32) + '°F' : null;
+    const humidity = day.relativeHumidity?.value != null ? day.relativeHumidity.value + '%' : null;
+    const nightTemp = night ? night.temperature + '°' + night.temperatureUnit : null;
+
+    // Truncate detailed forecast to ~120 chars for readability
+    const detail = day.detailedForecast
+      ? day.detailedForecast.length > 160
+        ? day.detailedForecast.substring(0, 160) + '…'
+        : day.detailedForecast
+      : '';
+
+    const tags = [
+      precip != null ? `💧 ${precip}% precip` : null,
+      wind ? `💨 ${wind}` : null,
+      humidity ? `💦 ${humidity} humidity` : null,
+      dewpoint ? `🌡 Dew ${dewpoint}` : null,
+      nightTemp ? `🌙 Low ${nightTemp}` : null,
+    ].filter(Boolean);
+
+    card.innerHTML = `
+      <div class="fc-header">
+        <div class="fc-day">${day.name}</div>
+        <div class="fc-icon">${weatherIcon(day.shortForecast)}</div>
+      </div>
+      <div class="fc-temp-row">
+        <div class="fc-high">${day.temperature}°${day.temperatureUnit}</div>
+        ${nightTemp ? `<div class="fc-low">/ ${nightTemp}</div>` : ''}
+      </div>
+      <div class="fc-short">${day.shortForecast}</div>
+      <div class="fc-detail">${detail}</div>
+      <div class="fc-meta">${tags.map(t => `<span class="fc-tag">${t}</span>`).join('')}</div>
+    `;
+    grid.appendChild(card);
+  });
+}
+
+function renderHourly(periods) {
+  const scroll = document.getElementById('hourly-scroll');
+  scroll.innerHTML = '';
+  periods.forEach(p => {
+    const time = new Date(p.startTime);
+    const item = document.createElement('div');
+    item.className = 'hourly-item';
+    item.innerHTML = `
+      <div class="hi-time">${time.getHours() % 12 || 12}${time.getHours() >= 12 ? 'PM' : 'AM'}</div>
+      <div class="hi-icon">${weatherIcon(p.shortForecast)}</div>
+      <div class="hi-temp">${p.temperature}°</div>
+      <div class="hi-precip">${p.probabilityOfPrecipitation?.value ? p.probabilityOfPrecipitation.value + '% 💧' : ''}</div>
+    `;
+    scroll.appendChild(item);
+  });
+}
+
+function weatherIcon(desc) {
+  desc = desc.toLowerCase();
+  if (desc.includes('thunder')) return '⛈';
+  if (desc.includes('snow')) return '❄';
+  if (desc.includes('rain') || desc.includes('shower')) return '🌧';
+  if (desc.includes('cloud') || desc.includes('overcast')) return '☁';
+  if (desc.includes('partly')) return '⛅';
+  if (desc.includes('fog')) return '🌫';
+  if (desc.includes('wind')) return '💨';
+  if (desc.includes('clear') || desc.includes('sunny')) return '☀';
+  return '🌤';
+}
+
+// ─── ALERTS ────────────────────────────────────────────────────────
+let lastAlertIds = new Set();
+async function loadAlerts() {
+  try {
+    const res = await fetch('https://api.weather.gov/alerts/active?area=TX');
+    const data = await res.json();
+    const dfw = (data.features || []).filter(f => {
+      const areas = f.properties.areaDesc || '';
+      return areas.match(/Dallas|Tarrant|Denton|Collin|Rockwall|Kaufman|Ellis|Johnson|Parker|Wise|Cooke|Grayson/i);
+    });
+    activeAlerts = dfw;
+    document.getElementById('alert-count').textContent = dfw.length;
+
+    // Send Telegram for new alerts
+    dfw.forEach(f => {
+      const id = f.properties.id;
+      if (!lastAlertIds.has(id)) {
+        lastAlertIds.add(id);
+        const event = f.properties.event;
+        const area = f.properties.areaDesc?.split(';')[0];
+        const msg = `⚠️ <b>NWS ALERT — ${event}</b>\n📍 ${area}\n\n${f.properties.headline || ''}\n\n<i>Storm Watch DFW</i>`;
+        sendTelegramToAll(msg);
+        logEvent('⚠️', `Alert: ${event}`);
+      }
+    });
+
+    renderSidebarAlerts(dfw);
+    renderAlertsPanel(dfw);
+  } catch(e) { console.log('Alert error', e); }
+}
+
+function renderSidebarAlerts(alerts) {
+  const el = document.getElementById('sidebar-alerts');
+  el.innerHTML = '';
+  if (!alerts.length) {
+    el.innerHTML = '<div class="no-alert">✓ No active alerts</div>';
+    return;
+  }
+  alerts.slice(0, 3).forEach(f => {
+    const div = document.createElement('div');
+    div.className = 'alert-item';
+    div.innerHTML = `
+      <div class="alert-event">${f.properties.event}</div>
+      <div class="alert-area">${f.properties.areaDesc?.split(';')[0]?.trim()}</div>
+    `;
+    el.appendChild(div);
+  });
+}
+
+function renderAlertsPanel(alerts) {
+  const el = document.getElementById('alerts-list');
+  el.innerHTML = '';
+  if (!alerts.length) {
+    el.innerHTML = '<div class="card"><div class="no-alert" style="font-size:14px">✓ No active alerts for DFW</div></div>';
+    return;
+  }
+  alerts.forEach(f => {
+    const p = f.properties;
+    const sev = p.severity?.toLowerCase();
+    const div = document.createElement('div');
+    div.className = `alert-card ${sev === 'moderate' ? 'moderate' : sev === 'minor' ? 'minor' : ''}`;
+    div.innerHTML = `
+      <div class="alert-severity" style="color:${sev === 'extreme' || sev === 'severe' ? 'var(--red)' : sev === 'moderate' ? 'var(--orange)' : 'var(--yellow)'}">${p.severity} — ${p.certainty}</div>
+      <div class="alert-title-big">${p.event}</div>
+      <div class="alert-desc">${p.headline || p.description?.substring(0, 200) || ''}</div>
+      <div class="alert-meta">Expires: ${p.expires ? new Date(p.expires).toLocaleString() : 'Unknown'}</div>
+    `;
+    el.appendChild(div);
+  });
+}
+
+// ─── STORM DATA ────────────────────────────────────────────────────
+async function loadStormData() {
+  renderStormStats({ cape: '--', shear: '--', helicity: '--', dewpoint: '--', visibility: '--', pressure: '--' });
+  try {
+    const res = await fetch(`https://api.weather.gov/points/32.9,-97.0`);
+    const data = await res.json();
+    const obsRes = await fetch(data.properties.observationStations);
+    const obsData = await obsRes.json();
+    const stationId = obsData.features[0]?.properties?.stationIdentifier;
+    if (!stationId) return;
+    const latestRes = await fetch(`https://api.weather.gov/stations/${stationId}/observations/latest`);
+    const latestData = await latestRes.json();
+    const obs = latestData.properties;
+    renderStormStats({
+      cape: obs.maxTemperatureLast24Hours?.value ? Math.round(obs.maxTemperatureLast24Hours.value * 9) : '--',
+      shear: obs.windSpeed?.value ? Math.round(obs.windSpeed.value * 1.944) : '--',
+      helicity: obs.windGust?.value ? Math.round(obs.windGust.value * 1.944) : '--',
+      dewpoint: obs.dewpoint?.value ? Math.round(obs.dewpoint.value * 9 / 5 + 32) + '°F' : '--',
+      visibility: obs.visibility?.value ? (obs.visibility.value / 1609).toFixed(1) + ' mi' : '--',
+      pressure: obs.barometricPressure?.value ? (obs.barometricPressure.value / 100).toFixed(1) + ' mb' : '--'
+    });
+    document.getElementById('storm-discussion').textContent = `Latest observation from ${stationId}. Wind: ${obs.windSpeed?.value ? (obs.windSpeed.value * 1.944).toFixed(0) + ' kts' : 'calm'}. Temperature: ${obs.temperature?.value ? (obs.temperature.value * 9/5 + 32).toFixed(0) + '°F' : '--'}.`;
+  } catch(e) {
+    document.getElementById('storm-discussion').textContent = 'Unable to load observation data.';
+  }
+}
+
+function renderStormStats(d) {
+  const grid = document.getElementById('storm-grid');
+  const stats = [
+    { label: 'CAPE', value: d.cape, unit: 'J/kg', pct: typeof d.cape === 'number' ? Math.min(d.cape / 3000 * 100, 100) : 0 },
+    { label: 'WIND SHEAR', value: d.shear, unit: 'kts', pct: typeof d.shear === 'number' ? Math.min(d.shear / 60 * 100, 100) : 0 },
+    { label: 'WIND GUST', value: d.helicity, unit: 'kts', pct: typeof d.helicity === 'number' ? Math.min(d.helicity / 100 * 100, 100) : 0 },
+    { label: 'DEWPOINT', value: d.dewpoint, unit: '', pct: 40 },
+    { label: 'VISIBILITY', value: d.visibility, unit: '', pct: 80 },
+    { label: 'PRESSURE', value: d.pressure, unit: '', pct: 60 }
+  ];
+  grid.innerHTML = stats.map(s => `
+    <div class="storm-stat">
+      <div class="ss-label">${s.label}</div>
+      <div class="ss-value">${s.value}</div>
+      <div class="ss-unit">${s.unit}</div>
+      <div class="ss-bar"><div class="ss-fill" style="width:${s.pct}%"></div></div>
+    </div>
+  `).join('');
+}
+
+// ─── DAILY FORECAST ALERT ─────────────────────────────────────────
+window.sendDailyForecastAlert = async function() {
+  const snap = await get(ref(db, 'members'));
+  if (!snap.exists()) { alert('No members to alert.'); return; }
+  let sent = 0;
+  for (const child of Object.values(snap.val() || {})) {
+    if (!child.telegramId || !child.lat || !child.lon) continue;
+    try {
+      const ptRes = await fetch(`https://api.weather.gov/points/${child.lat},${child.lon}`);
+      const ptData = await ptRes.json();
+      const fRes = await fetch(ptData.properties.forecast);
+      const fData = await fRes.json();
+      const today = fData.properties.periods[0];
+      const tomorrow = fData.properties.periods[2];
+      const msg = `🌤 <b>Daily Forecast — Storm Watch DFW</b>\n\n<b>Today:</b> ${today?.name} — ${today?.temperature}°${today?.temperatureUnit} — ${today?.shortForecast}\n<b>Tomorrow:</b> ${tomorrow?.name} — ${tomorrow?.temperature}°${tomorrow?.temperatureUnit} — ${tomorrow?.shortForecast}\n\n📍 ${child.city || child.zip || 'Your location'}\n<i>Storm Watch DFW</i>`;
+      await sendTelegram(child.telegramId, msg);
+      sent++;
+    } catch(e) { console.log('Daily forecast error for', child.name, e); }
+  }
+  alert(`Daily forecast sent to ${sent} member(s)!`);
+  logEvent('📩', `Daily forecast alerts sent to ${sent} members`);
+};
+
+// ─── REFRESH ───────────────────────────────────────────────────────
+function refreshAll() {
+  loadRadar();
+  loadAlerts();
+  loadStormData();
+  if (document.getElementById('forecast-panel').classList.contains('active')) loadForecast();
+  document.getElementById('status-refresh').textContent = `Refreshed ${new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}`;
+  logEvent('↻', 'Manual refresh');
+}
+
+function startRefreshLoop() {
+  setInterval(() => { loadAlerts(); loadRadar(); }, 5 * 60 * 1000);
+  // Daily forecast at 7am
+  const now = new Date();
+  const next7am = new Date(now);
+  next7am.setHours(7, 0, 0, 0);
+  if (now >= next7am) next7am.setDate(next7am.getDate() + 1);
+  setTimeout(() => {
+    sendDailyForecastToAll();
+    setInterval(sendDailyForecastToAll, 24 * 60 * 60 * 1000);
+  }, next7am - now);
+}
+
+async function sendDailyForecastToAll() {
+  const snap = await get(ref(db, 'members'));
+  if (!snap.exists()) return;
+  for (const child of Object.values(snap.val() || {})) {
+    if (!child.telegramId || !child.lat || !child.lon) continue;
+    try {
+      const ptRes = await fetch(`https://api.weather.gov/points/${child.lat},${child.lon}`);
+      const ptData = await ptRes.json();
+      const fRes = await fetch(ptData.properties.forecast);
+      const fData = await fRes.json();
+      const today = fData.properties.periods[0];
+      const msg = `☀️ <b>Good morning! Daily Forecast — Storm Watch DFW</b>\n\n<b>${today?.name}:</b> ${today?.temperature}°${today?.temperatureUnit}\n${today?.detailedForecast?.substring(0, 200)}\n\n📍 ${child.city || 'Your area'}\n<i>Storm Watch DFW</i>`;
+      await sendTelegram(child.telegramId, msg);
+    } catch(e) {}
+  }
+}
+
+// ─── TAB SWITCHING ─────────────────────────────────────────────────
+window.switchTab = function(tab) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelector(`[data-tab="${tab}"]`).classList.add('active');
+  document.getElementById('map-panel').classList.remove('active');
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  if (tab === 'map') {
+    document.getElementById('map-panel').classList.add('active');
+    document.body.classList.add('map-active');
+    // Auto-collapse sidebar on map tab for more radar space
+    document.getElementById('sidebar').classList.add('collapsed');
+    document.getElementById('sidebar-toggle').textContent = '▶';
+    setTimeout(() => map.invalidateSize(), 300);
+  } else {
+    document.body.classList.remove('map-active');
+    // Restore sidebar on non-map tabs (desktop only)
+    if (window.innerWidth > 768) {
+      document.getElementById('sidebar').classList.remove('collapsed');
+      document.getElementById('sidebar-toggle').textContent = '◀';
+    }
+    document.getElementById(`${tab}-panel`).classList.add('active');
+    if (tab === 'forecast') loadForecast();
+  }
+};
+
+window.toggleSidebar = function() {
+  const sb = document.getElementById('sidebar');
+  const btn = document.getElementById('sidebar-toggle');
+  sb.classList.toggle('collapsed');
+  btn.textContent = sb.classList.contains('collapsed') ? '▶' : '◀';
+  if (!sb.classList.contains('collapsed')) {
+    setTimeout(() => map?.invalidateSize(), 300);
+  }
+};
+
+// ─── MODALS ────────────────────────────────────────────────────────
+window.showAdminModal = function() {
+  document.getElementById('admin-login-section').classList.remove('hidden');
+  document.getElementById('admin-panel-section').classList.add('hidden');
+  document.getElementById('admin-modal-sub').textContent = 'Enter admin password';
+  document.getElementById('admin-modal').classList.remove('hidden');
+  setTimeout(() => document.getElementById('admin-pw-input').focus(), 100);
+};
+
+window.checkAdminPw = function() {
+  const pw = document.getElementById('admin-pw-input').value;
+  if (pw === ADMIN_PW) {
+    isAdmin = true;
+    document.getElementById('admin-login-section').classList.add('hidden');
+    document.getElementById('admin-panel-section').classList.remove('hidden');
+    document.getElementById('admin-modal-sub').textContent = 'Admin mode active';
+    document.getElementById('admin-pw-input').value = '';
+  } else {
+    document.getElementById('admin-modal-sub').textContent = '❌ Incorrect password';
+  }
+};
+
+window.hideModal = function(id) { document.getElementById(id).classList.add('hidden'); };
+
+window.genInvite = function() {
+  const url = `${location.origin}${location.pathname}?invite=${INVITE_CODE}`;
+  document.getElementById('invite-link-box').textContent = url;
+};
+
+window.copyInvite = function() {
+  const txt = document.getElementById('invite-link-box').textContent;
+  navigator.clipboard.writeText(txt).then(() => {
+    document.getElementById('invite-link-box').textContent = '✓ Copied!';
+    setTimeout(genInvite, 1500);
+  });
+};
+
+function checkURLInvite() {
+  const params = new URLSearchParams(location.search);
+  if (params.get('invite') === INVITE_CODE && !localStorage.getItem('sw_member_id')) {
+    document.getElementById('signup-modal').classList.remove('hidden');
+  }
+}
+
+// ─── SIGNUP ────────────────────────────────────────────────────────
+window.doSignup = async function() {
+  const name = document.getElementById('signup-name').value.trim();
+  const locInput = document.getElementById('signup-location').value.trim();
+  const telegramId = document.getElementById('signup-telegram').value.trim();
+  if (!name || !locInput) { alert('Please enter your name and location'); return; }
+
+  // Geocode the location
+  let lat = 32.9, lon = -97.0, city = locInput;
+  try {
+    const r = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(locInput)}&format=json&limit=1&countrycodes=us`);
+    const d = await r.json();
+    if (d.length) {
+      lat = parseFloat(d[0].lat);
+      lon = parseFloat(d[0].lon);
+      city = d[0].display_name?.split(',').slice(0,2).join(',').trim() || locInput;
+    }
+  } catch(e) {}
+
+  const memberRef = push(ref(db, 'members'));
+  await set(memberRef, { name, city, zip: locInput, lat, lon, online: true, checkedIn: false, joinedAt: Date.now(), telegramId: telegramId || null });
+  saveCurrentUser(memberRef.key, lat, lon);
+  forecastMemberName = 'Your';
+  requestGPS(); // Safe here — triggered by user tapping "JOIN THE GROUP"
+
+  // Welcome message via Telegram
+  if (telegramId) {
+    sendTelegram(telegramId, `👋 Welcome to Storm Watch DFW, <b>${name}</b>!\n\nYou'll receive:\n⚠️ NWS severe weather alerts\n🌧 Heavy rain/storm radar alerts\n✅ Member check-ins\n☀️ Daily forecast summaries\n\n📍 Your location: ${city}`);
+  }
+
+  hideModal('signup-modal');
+  logEvent('👤', `${name} joined the group`);
+  // Clean URL
+  history.replaceState({}, '', location.pathname);
+};
+
+// ─── MEMBER MODAL ──────────────────────────────────────────────────
+window.openMemberModal = function(memberId) {
+  const m = members[memberId];
+  if (!m) return;
+  selectedMemberForModal = memberId;
+  document.getElementById('member-modal-name').textContent = m.name;
+  document.getElementById('member-modal-loc').textContent = `📍 ${m.city || m.zip || 'Unknown location'}`;
+  document.getElementById('member-modal').classList.remove('hidden');
+};
+
+window.viewMemberForecast = function() {
+  if (!selectedMemberForModal) return;
+  const m = members[selectedMemberForModal];
+  if (!m) return;
+  hideModal('member-modal');
+  switchTab('forecast');
+  loadForecast(m.lat, m.lon, m.name);
+};
+
+window.viewMemberForecastDirect = function(memberId) {
+  const m = members[memberId];
+  if (!m) return;
+  switchTab('forecast');
+  loadForecast(m.lat, m.lon, m.name);
+};
+
+// ─── TELEGRAM MODAL ────────────────────────────────────────────────
+window.showTelegramModal = function() {
+  if (currentUser && members[currentUser]?.telegramId) {
+    document.getElementById('tg-chat-id-input').value = members[currentUser].telegramId;
+  }
+  document.getElementById('telegram-modal').classList.remove('hidden');
+};
+
+window.saveTelegramId = async function() {
+  const chatId = document.getElementById('tg-chat-id-input').value.trim();
+  if (!chatId) { alert('Please enter your Telegram Chat ID'); return; }
+  if (!currentUser) { alert('You need to join the group first!'); return; }
+  await update(ref(db, `members/${currentUser}`), { telegramId: chatId });
+  sendTelegram(chatId, `✅ <b>Telegram alerts enabled!</b>\n\nYou'll now receive storm alerts for your area on Storm Watch DFW.\n\n<i>Storm Watch DFW</i>`);
+  hideModal('telegram-modal');
+  logEvent('✈', `Telegram alerts enabled for ${members[currentUser]?.name || 'member'}`);
+  alert('Telegram alerts enabled! You should receive a confirmation message.');
+};
+
+// ─── EVENT LOG ─────────────────────────────────────────────────────
+function logEvent(icon, text) {
+  const time = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+  eventLog.unshift({ icon, text, time });
+  if (eventLog.length > 50) eventLog.pop();
+  renderEventLog();
+}
+
+function renderEventLog() {
+  const el = document.getElementById('event-log-list');
+  if (!eventLog.length) { el.innerHTML = '<div style="color:var(--text3);font-size:13px">No events yet</div>'; return; }
+  el.innerHTML = eventLog.map(e => `
+    <div class="log-item">
+      <span class="log-time">${e.time}</span>
+      <span class="log-icon">${e.icon}</span>
+      <span class="log-text">${e.text}</span>
+    </div>
+  `).join('');
+}
+
+// ─── STATUS ────────────────────────────────────────────────────────
+function updateStatusTime() {
+  const t = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+  document.getElementById('status-time').textContent = `Updated ${t}`;
+  setTimeout(updateStatusTime, 60000);
+}
+
+</script>
+</body>
+</html>
