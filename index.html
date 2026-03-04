@@ -122,7 +122,8 @@ body{background:var(--bg);color:var(--text);font-family:'Barlow',sans-serif;heig
 .checkin-btn:hover{background:rgba(0,230,118,.2)}
 /* Storm data */
 .storm-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;margin-top:10px}
-.storm-stat{background:var(--surface2);border:1px solid var(--border);border-radius:5px;padding:12px;text-align:center}
+.storm-stat{background:var(--surface2);border:1px solid var(--border);border-radius:5px;padding:12px;text-align:center;transition:border-color .2s,background .2s}
+.storm-stat:hover{border-color:var(--cyan2);background:rgba(0,229,255,.04)}
 .ss-label{font-size:10px;letter-spacing:2px;color:var(--text3);font-family:'Barlow Condensed',sans-serif;text-transform:uppercase}
 .ss-value{font-size:28px;font-weight:800;font-family:'Barlow Condensed',sans-serif;color:var(--cyan);margin:4px 0}
 .ss-unit{font-size:11px;color:var(--text2)}
@@ -460,6 +461,15 @@ body.map-active #sidebar-toggle{display:block}
     <input type="text" class="modal-input" id="tg-chat-id-input" placeholder="e.g. 123456789">
     <button class="modal-btn primary" onclick="saveTelegramId()">SAVE & ENABLE ALERTS</button>
     <button class="modal-btn secondary" onclick="hideModal('telegram-modal')">CANCEL</button>
+  </div>
+</div>
+
+<!-- Stat Info Modal -->
+<div id="stat-info-modal" class="modal-overlay hidden">
+  <div class="modal" style="width:440px;max-height:85vh;overflow-y:auto">
+    <div class="modal-title" id="stat-info-title"></div>
+    <div id="stat-info-content" style="margin-top:10px"></div>
+    <button class="modal-btn secondary" onclick="hideModal('stat-info-modal')" style="margin-top:14px">CLOSE</button>
   </div>
 </div>
 
@@ -938,23 +948,18 @@ async function loadAlerts() {
     const data = await res.json();
     const dfw = (data.features || []).filter(f => {
       const areas = f.properties.areaDesc || '';
-      return areas.match(/Dallas|Tarrant|Denton|Collin|Rockwall|Kaufman|Ellis|Johnson|Parker|Wise|Cooke|Grayson/i);
+      return areas.match(/\b(Dallas|Tarrant|Denton|Collin|Rockwall|Kaufman|Ellis|Johnson|Parker|Wise|Cooke|Grayson)\b/i);
     });
     activeAlerts = dfw;
     document.getElementById('alert-count').textContent = dfw.length;
 
-    // Send Telegram for new alerts
-    dfw.forEach(f => {
-      const id = f.properties.id;
-      if (!lastAlertIds.has(id)) {
-        lastAlertIds.add(id);
-        const event = f.properties.event;
-        const area = f.properties.areaDesc?.split(';')[0];
-        const msg = `⚠️ <b>NWS ALERT — ${event}</b>\n📍 ${area}\n\n${f.properties.headline || ''}\n\n<i>Storm Watch DFW</i>`;
-        sendTelegramToAll(msg);
-        logEvent('⚠️', `Alert: ${event}`);
-      }
+    // Send Telegram only for new alerts — personalized by each member's GPS location
+    const newAlerts = dfw.filter(f => !lastAlertIds.has(f.properties.id));
+    newAlerts.forEach(f => {
+      lastAlertIds.add(f.properties.id);
+      logEvent('⚠️', `Alert: ${f.properties.event}`);
     });
+    if (newAlerts.length > 0) sendLocationAwareAlerts(newAlerts);
 
     renderSidebarAlerts(dfw);
     renderAlertsPanel(dfw);
@@ -1002,30 +1007,68 @@ function renderAlertsPanel(alerts) {
   });
 }
 
+// Send alerts only to members whose GPS location is actually within the alert zone
+async function sendLocationAwareAlerts(newAlerts) {
+  const snap = await get(ref(db, 'members'));
+  if (!snap.exists()) return;
+  for (const child of Object.values(snap.val() || {})) {
+    if (!child.telegramId) continue;
+    let alertsForMember = newAlerts;
+    // If member has GPS coords, query NWS to see which alerts affect their exact location
+    if (child.lat && child.lon) {
+      try {
+        const res = await fetch(`https://api.weather.gov/alerts/active?point=${child.lat},${child.lon}`);
+        const data = await res.json();
+        const locationIds = new Set((data.features || []).map(f => f.properties.id));
+        alertsForMember = newAlerts.filter(a => locationIds.has(a.properties.id));
+      } catch(e) { /* fall back to all DFW alerts on API error */ }
+    }
+    for (const f of alertsForMember) {
+      const event = f.properties.event;
+      const area = f.properties.areaDesc?.split(';')[0];
+      const msg = `⚠️ <b>NWS ALERT — ${event}</b>\n📍 ${area}\n\n${f.properties.headline || ''}\n\n<i>Storm Watch DFW</i>`;
+      sendTelegram(child.telegramId, msg);
+    }
+  }
+}
+
 // ─── STORM DATA ────────────────────────────────────────────────────
 async function loadStormData() {
-  renderStormStats({ cape: '--', shear: '--', helicity: '--', dewpoint: '--', visibility: '--', pressure: '--' });
+  renderStormStats({ cape: '--', shear: '--', gust: '--', dewpoint: '--', visibility: '--', pressure: '--' });
   try {
-    const res = await fetch(`https://api.weather.gov/points/32.9,-97.0`);
-    const data = await res.json();
-    const obsRes = await fetch(data.properties.observationStations);
-    const obsData = await obsRes.json();
-    const stationId = obsData.features[0]?.properties?.stationIdentifier;
-    if (!stationId) return;
-    const latestRes = await fetch(`https://api.weather.gov/stations/${stationId}/observations/latest`);
-    const latestData = await latestRes.json();
-    const obs = latestData.properties;
-    renderStormStats({
-      cape: obs.maxTemperatureLast24Hours?.value ? Math.round(obs.maxTemperatureLast24Hours.value * 9) : '--',
-      shear: obs.windSpeed?.value ? Math.round(obs.windSpeed.value * 1.944) : '--',
-      helicity: obs.windGust?.value ? Math.round(obs.windGust.value * 1.944) : '--',
-      dewpoint: obs.dewpoint?.value ? Math.round(obs.dewpoint.value * 9 / 5 + 32) + '°F' : '--',
-      visibility: obs.visibility?.value ? (obs.visibility.value / 1609).toFixed(1) + ' mi' : '--',
-      pressure: obs.barometricPressure?.value ? (obs.barometricPressure.value / 100).toFixed(1) + ' mb' : '--'
-    });
-    document.getElementById('storm-discussion').textContent = `Latest observation from ${stationId}. Wind: ${obs.windSpeed?.value ? (obs.windSpeed.value * 1.944).toFixed(0) + ' kts' : 'calm'}. Temperature: ${obs.temperature?.value ? (obs.temperature.value * 9/5 + 32).toFixed(0) + '°F' : '--'}.`;
+    // Real CAPE, wind gust, and low-level shear from Open-Meteo (free, no API key needed)
+    const omRes = await fetch('https://api.open-meteo.com/v1/forecast?latitude=32.9&longitude=-97.0&current=cape,wind_gusts_10m,wind_speed_10m,wind_speed_80m,dew_point_2m&wind_speed_unit=kn&temperature_unit=fahrenheit');
+    const omData = await omRes.json();
+    const cur = omData.current;
+    const cape = cur.cape != null ? Math.round(cur.cape) : '--';
+    const gust = cur.wind_gusts_10m != null ? Math.round(cur.wind_gusts_10m) : '--';
+    // Low-level bulk shear proxy: wind at 80m minus surface (10m) wind
+    const shear = (cur.wind_speed_80m != null && cur.wind_speed_10m != null)
+      ? Math.max(0, Math.round(cur.wind_speed_80m - cur.wind_speed_10m)) : '--';
+    const dewpoint = cur.dew_point_2m != null ? Math.round(cur.dew_point_2m) + '°F' : '--';
+
+    // Pressure and visibility from NWS observation station
+    let pressure = '--', visibility = '--', stationId = 'NWS';
+    try {
+      const res = await fetch('https://api.weather.gov/points/32.9,-97.0');
+      const data = await res.json();
+      const obsRes = await fetch(data.properties.observationStations);
+      const obsData = await obsRes.json();
+      stationId = obsData.features[0]?.properties?.stationIdentifier || 'NWS';
+      const latestRes = await fetch(`https://api.weather.gov/stations/${stationId}/observations/latest`);
+      const latestData = await latestRes.json();
+      const obs = latestData.properties;
+      pressure = obs.barometricPressure?.value ? (obs.barometricPressure.value / 100).toFixed(1) + ' mb' : '--';
+      visibility = obs.visibility?.value ? (obs.visibility.value / 1609).toFixed(1) + ' mi' : '--';
+    } catch(e) {}
+
+    renderStormStats({ cape, shear, gust, dewpoint, visibility, pressure });
+    const capeDesc = cape === '--' ? 'N/A' : cape < 500 ? 'weak instability' : cape < 1500 ? 'moderate instability' : cape < 3000 ? 'strong instability' : 'extreme instability';
+    document.getElementById('storm-discussion').textContent =
+      `Live: Open-Meteo (CAPE, gusts, shear) + NWS ${stationId} (pressure, visibility). CAPE ${cape} J/kg — ${capeDesc}. Wind gust: ${gust} kts. Low-level shear: ${shear} kts. Click any stat to learn more.`;
   } catch(e) {
-    document.getElementById('storm-discussion').textContent = 'Unable to load observation data.';
+    document.getElementById('storm-discussion').textContent = 'Unable to load storm data.';
+    console.log('Storm data error:', e);
   }
 }
 
@@ -1034,14 +1077,14 @@ function renderStormStats(d) {
   const stats = [
     { label: 'CAPE', value: d.cape, unit: 'J/kg', pct: typeof d.cape === 'number' ? Math.min(d.cape / 3000 * 100, 100) : 0 },
     { label: 'WIND SHEAR', value: d.shear, unit: 'kts', pct: typeof d.shear === 'number' ? Math.min(d.shear / 60 * 100, 100) : 0 },
-    { label: 'WIND GUST', value: d.helicity, unit: 'kts', pct: typeof d.helicity === 'number' ? Math.min(d.helicity / 100 * 100, 100) : 0 },
-    { label: 'DEWPOINT', value: d.dewpoint, unit: '', pct: 40 },
-    { label: 'VISIBILITY', value: d.visibility, unit: '', pct: 80 },
-    { label: 'PRESSURE', value: d.pressure, unit: '', pct: 60 }
+    { label: 'WIND GUST', value: d.gust, unit: 'kts', pct: typeof d.gust === 'number' ? Math.min(d.gust / 100 * 100, 100) : 0 },
+    { label: 'DEWPOINT', value: d.dewpoint, unit: '', pct: typeof d.dewpoint === 'string' ? Math.min(Math.max(0, (parseFloat(d.dewpoint) + 20) / 90 * 100), 100) : 40 },
+    { label: 'VISIBILITY', value: d.visibility, unit: '', pct: typeof d.visibility === 'string' ? Math.min(parseFloat(d.visibility) / 10 * 100, 100) : 80 },
+    { label: 'PRESSURE', value: d.pressure, unit: '', pct: typeof d.pressure === 'string' ? Math.max(0, Math.min((parseFloat(d.pressure) - 970) / 50 * 100, 100)) : 60 }
   ];
   grid.innerHTML = stats.map(s => `
-    <div class="storm-stat">
-      <div class="ss-label">${s.label}</div>
+    <div class="storm-stat" onclick="showStatInfo('${s.label}')" style="cursor:pointer" title="Tap to learn more">
+      <div class="ss-label">${s.label} <span style="font-size:9px;opacity:0.45">ⓘ</span></div>
       <div class="ss-value">${s.value}</div>
       <div class="ss-unit">${s.unit}</div>
       <div class="ss-bar"><div class="ss-fill" style="width:${s.pct}%"></div></div>
@@ -1319,6 +1362,91 @@ function renderEventLog() {
     </div>
   `).join('');
 }
+
+// ─── STAT INFO MODAL ───────────────────────────────────────────────
+const STAT_INFO = {
+  'CAPE': {
+    title: '⚡ CAPE — Convective Available Potential Energy',
+    desc: 'CAPE measures how much energy is available for a rising air parcel to keep rising — it\'s the engine of thunderstorm development. Higher CAPE = more explosive storm potential.',
+    ranges: [
+      { range: '0–500 J/kg', label: 'Weak', color: 'var(--green)', note: 'Little convective activity expected' },
+      { range: '500–1500 J/kg', label: 'Moderate', color: 'var(--yellow)', note: 'Ordinary thunderstorms possible' },
+      { range: '1500–3000 J/kg', label: 'Strong', color: 'var(--orange)', note: 'Severe thunderstorms likely with large hail or strong winds' },
+      { range: '3000+ J/kg', label: 'Extreme', color: 'var(--red)', note: 'Violent storms, supercells, and significant tornadoes possible' }
+    ]
+  },
+  'WIND SHEAR': {
+    title: '💨 Wind Shear — Low-Level Shear (Surface–80m)',
+    desc: 'Wind shear is the change in wind speed or direction with altitude. Low-level shear tilts and organizes storm updrafts, enabling supercells and tornado development. This is a near-surface shear proxy.',
+    ranges: [
+      { range: '0–10 kts', label: 'Low', color: 'var(--green)', note: 'Minimal storm rotation potential' },
+      { range: '10–25 kts', label: 'Moderate', color: 'var(--yellow)', note: 'Some storm organization and multicell potential' },
+      { range: '25–40 kts', label: 'High', color: 'var(--orange)', note: 'Supercell potential — tornado watch threshold territory' },
+      { range: '40+ kts', label: 'Extreme', color: 'var(--red)', note: 'Significant tornado risk with strong supercells' }
+    ]
+  },
+  'WIND GUST': {
+    title: '🌬 Wind Gust — Peak Surface Wind Speed',
+    desc: 'The maximum instantaneous wind speed measured near the surface. Strong gusts indicate convective outflow from downdrafts, derecho conditions, or direct thunderstorm impact.',
+    ranges: [
+      { range: '0–25 kts', label: 'Light', color: 'var(--green)', note: 'Normal calm-to-breezy conditions' },
+      { range: '25–40 kts', label: 'Breezy', color: 'var(--yellow)', note: 'Elevated — caution for loose structures and outdoor activity' },
+      { range: '40–60 kts', label: 'Damaging', color: 'var(--orange)', note: 'Tree damage, power outages possible — Severe Thunderstorm threshold is 50 kts' },
+      { range: '60+ kts', label: 'Destructive', color: 'var(--red)', note: 'Significant structural damage — hurricane-force at surface' }
+    ]
+  },
+  'DEWPOINT': {
+    title: '💧 Dewpoint Temperature',
+    desc: 'The temperature at which air becomes saturated and moisture condenses. Dewpoint is the best single measure of atmospheric moisture content — the fuel that powers thunderstorms. Higher = more fuel.',
+    ranges: [
+      { range: 'Below 50°F', label: 'Very Dry', color: 'var(--green)', note: 'Low moisture — storms struggle to sustain or intensify' },
+      { range: '50–60°F', label: 'Comfortable', color: 'var(--yellow)', note: 'Moderate moisture — some storm support' },
+      { range: '60–70°F', label: 'Muggy', color: 'var(--orange)', note: 'Good storm fuel — elevated severe weather threat' },
+      { range: '70°F+', label: 'Oppressive', color: 'var(--red)', note: 'Exceptional moisture — extreme storm and flash flood potential' }
+    ]
+  },
+  'VISIBILITY': {
+    title: '👁 Surface Visibility',
+    desc: 'The horizontal distance at which objects can be clearly identified. During severe weather, visibility can drop to near zero inside heavy precipitation cores, hail shafts, or tornado debris clouds.',
+    ranges: [
+      { range: '7+ miles', label: 'Clear', color: 'var(--green)', note: 'Unrestricted — normal driving and outdoor conditions' },
+      { range: '3–7 miles', label: 'Reduced', color: 'var(--yellow)', note: 'Mist, haze, light rain, or smoke nearby' },
+      { range: '1–3 miles', label: 'Low', color: 'var(--orange)', note: 'Dense fog, heavy rain, or smoke — drive with caution' },
+      { range: '<1 mile', label: 'Dangerous', color: 'var(--red)', note: 'Extreme precipitation, dense fog, or debris — seek shelter' }
+    ]
+  },
+  'PRESSURE': {
+    title: '🌀 Barometric Pressure',
+    desc: 'Atmospheric pressure at the surface in millibars. A rapidly falling barometer signals an approaching storm. The core of an intense supercell or hurricane can drop to 960 mb or lower.',
+    ranges: [
+      { range: '1013+ mb', label: 'High Pressure', color: 'var(--green)', note: 'Fair weather — sinking air suppresses storm development' },
+      { range: '1000–1013 mb', label: 'Near Normal', color: 'var(--yellow)', note: 'Average surface pressure — variable conditions' },
+      { range: '985–1000 mb', label: 'Low Pressure', color: 'var(--orange)', note: 'Unsettled weather — fronts and storms likely nearby' },
+      { range: '<985 mb', label: 'Very Low', color: 'var(--red)', note: 'Intense storm system — rapid pressure drop = dangerous conditions' }
+    ]
+  }
+};
+
+window.showStatInfo = function(label) {
+  const info = STAT_INFO[label];
+  if (!info) return;
+  document.getElementById('stat-info-title').textContent = info.title;
+  document.getElementById('stat-info-content').innerHTML = `
+    <p style="font-size:13px;color:var(--text2);line-height:1.6;margin-bottom:14px">${info.desc}</p>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      ${info.ranges.map(r => `
+        <div style="display:flex;align-items:flex-start;gap:10px;padding:9px 11px;background:var(--surface2);border:1px solid var(--border);border-radius:4px;border-left:3px solid ${r.color}">
+          <div style="flex:1;min-width:0">
+            <div style="font-size:11px;font-family:'Share Tech Mono',monospace;color:${r.color};margin-bottom:2px">${r.range}</div>
+            <div style="font-size:13px;font-weight:700;font-family:'Barlow Condensed',sans-serif;letter-spacing:1px;color:var(--text)">${r.label}</div>
+            <div style="font-size:11px;color:var(--text3);margin-top:3px;line-height:1.4">${r.note}</div>
+          </div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+  document.getElementById('stat-info-modal').classList.remove('hidden');
+};
 
 // ─── STATUS ────────────────────────────────────────────────────────
 function updateStatusTime() {
