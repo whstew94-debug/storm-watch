@@ -515,7 +515,7 @@ async function sendTelegramToAll(message) {
   if (!snap.exists()) return;
   snap.forEach(child => {
     const m = child.val();
-    if (m.telegramId) sendTelegram(m.telegramId, message);
+    if (m.telegramId && !m.alertsPaused) sendTelegram(m.telegramId, message);
   });
 }
 
@@ -1012,7 +1012,7 @@ async function sendLocationAwareAlerts(newAlerts) {
   const snap = await get(ref(db, 'members'));
   if (!snap.exists()) return;
   for (const child of Object.values(snap.val() || {})) {
-    if (!child.telegramId) continue;
+    if (!child.telegramId || child.alertsPaused) continue;
     let alertsForMember = newAlerts;
     // If member has GPS coords, query NWS to see which alerts affect their exact location
     if (child.lat && child.lon) {
