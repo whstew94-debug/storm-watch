@@ -548,7 +548,7 @@ let members = {};
 let activeAlerts = [];
 let eventLog = [];
 let map, radarLayer;
-let radarFrames = [], radarFrameIdx = 0, radarPlaying = false, radarTimer = null;
+let radarFrames = [], radarFrameIdx = 0, radarPlaying = false, radarTimer = null, radarLayers = {};
 let forecastLat = 33.2148, forecastLon = -97.1331; // default Denton
 let forecastMemberName = 'Your';
 let selectedMemberForModal = null;
@@ -677,8 +677,7 @@ function initMap() {
   map.on('zoomend', () => {
     if (!radarLayer) return;
     const z = map.getZoom();
-    const opacity = z <= 8 ? 0.7 : Math.max(0.25, 0.7 - (z - 8) * 0.06);
-    radarLayer.setOpacity(opacity);
+    radarLayer.setOpacity(z <= 8 ? 0.7 : Math.max(0.25, 0.7 - (z - 8) * 0.06));
   });
   loadRadar();
 }
@@ -706,24 +705,31 @@ function showRadarFrame(idx) {
   idx = Math.max(0, Math.min(radarFrames.length - 1, idx));
   radarFrameIdx = idx;
   const frame = radarFrames[idx];
-  const tileUrl = `https://tilecache.rainviewer.com${frame.path}/256/{z}/{x}/{y}/2/1_1.png`;
-  if (radarLayer) { radarLayer.setUrl(tileUrl); }
-  else {
-    radarLayer = L.tileLayer(tileUrl, { opacity: 0.7, maxZoom: 19, zIndex: 200, attribution: 'RainViewer' });
-    radarLayer.addTo(map);
+
+  // Hide previous active layer
+  if (radarLayer) radarLayer.setOpacity(0);
+
+  // Reuse cached layer or create one — never call setUrl (causes flash)
+  if (!radarLayers[idx]) {
+    const tileUrl = `https://tilecache.rainviewer.com${frame.path}/256/{z}/{x}/{y}/2/1_1.png`;
+    radarLayers[idx] = L.tileLayer(tileUrl, {
+      opacity: 0, maxNativeZoom: 12, maxZoom: 19, zIndex: 200, attribution: 'RainViewer'
+    }).addTo(map);
   }
+  radarLayer = radarLayers[idx];
+  radarLayer.setOpacity(map.getZoom() <= 8 ? 0.7 : Math.max(0.25, 0.7 - (map.getZoom() - 8) * 0.06));
+
   // Time label
   const d = new Date(frame.time * 1000);
   const mins = d.getMinutes().toString().padStart(2, '0');
   const hrs = d.getHours() % 12 || 12;
   const ampm = d.getHours() >= 12 ? 'PM' : 'AM';
-  const isPast = idx < radarFrames.filter(f => f.time <= Date.now() / 1000).length;
+  const isPast = frame.time <= Date.now() / 1000;
   document.getElementById('radar-time').textContent = `${hrs}:${mins} ${ampm}`;
   document.getElementById('radar-time').style.color = isPast ? 'var(--cyan)' : 'var(--yellow)';
   document.getElementById('radar-slider').value = idx;
-  const liveBtn = document.getElementById('radar-live-btn');
-  const isLive = idx === radarFrames.length - 1 || (idx === radarFrames.filter(f => f.time <= Date.now() / 1000).length - 1);
-  liveBtn.classList.toggle('active', isLive);
+  const liveIdx = radarFrames.reduce((best, f, i) => f.time <= Date.now() / 1000 ? i : best, 0);
+  document.getElementById('radar-live-btn').classList.toggle('active', idx === liveIdx);
 }
 
 window.radarTogglePlay = function() {
