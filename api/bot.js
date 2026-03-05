@@ -28,11 +28,11 @@ async function sendTg(chatId, html) {
 }
 
 async function findMember(chatId) {
-  const data = await dbGet('members', `&orderBy=%22telegramId%22&equalTo=%22${chatId}%22`);
+  const data = await dbGet('members');
   if (!data || typeof data !== 'object') return null;
-  const entries = Object.entries(data);
-  if (entries.length === 0) return null;
-  return { id: entries[0][0], ...entries[0][1] };
+  const entry = Object.entries(data).find(([, m]) => String(m.telegramId) === String(chatId));
+  if (!entry) return null;
+  return { id: entry[0], ...entry[1] };
 }
 
 async function geocode(query) {
