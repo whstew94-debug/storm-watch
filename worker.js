@@ -242,6 +242,30 @@ async function handleSetLocation(chatId, query, env) {
   }
 }
 
+async function handleLocationShare(chatId, fromId, lat, lon, env) {
+  const member = await findMember(fromId, env);
+  if (!member) { await sendTg(chatId, notLinkedMsg(fromId), env.TG_TOKEN); return; }
+
+  let city = `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+  try {
+    const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`;
+    const res  = await fetch(url, { headers: { 'User-Agent': 'StormWatchDFW/1.0' } });
+    const data = await res.json();
+    if (data?.display_name) {
+      city = data.display_name.split(',').slice(0, 3).join(',').trim();
+    }
+  } catch { /* fall back to coords */ }
+
+  const nws = await getNwsProps(lat, lon, env);
+  if (!nws) {
+    await sendTg(chatId, `❌ That location isn't covered by NWS data. Try /setlocation with a US city or zip instead.`, env.TG_TOKEN);
+    return;
+  }
+
+  await dbPatch(`members/${member.id}`, { lat, lon, city }, env);
+  await sendTg(chatId, `📍 Location updated to <b>${city}</b>.\n\nYou'll now receive alerts for this area. Use /weather to see your forecast.`, env.TG_TOKEN);
+}
+
 async function handleMyLocation(chatId, env) {
   const member = await findMember(chatId, env);
   if (!member) { await sendTg(chatId, notLinkedMsg(chatId), env.TG_TOKEN); return; }
@@ -322,6 +346,13 @@ export default {
 
     const msg    = body.message;
     const chatId = String(msg.chat.id);
+
+    if (msg.location) {
+      const fromId = String(msg.from?.id || msg.chat.id);
+      try { await handleLocationShare(chatId, fromId, msg.location.latitude, msg.location.longitude, env); } catch (e) { console.error(e); }
+      return new Response('OK', { status: 200 });
+    }
+
     const text   = (msg.text || '').trim();
 
     if (!text.startsWith('/')) return new Response('OK', { status: 200 });
