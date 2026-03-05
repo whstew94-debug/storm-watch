@@ -1,5 +1,6 @@
 {
   "functions": {
-    "api/bot.js": { "memory": 128, "maxDuration": 10 }
+    "api/bot.js":   { "memory": 128, "maxDuration": 10 },
+    "api/setup.js": { "memory": 128, "maxDuration": 10 }
   }
 }
