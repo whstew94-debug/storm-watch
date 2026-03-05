@@ -1,0 +1,15 @@
+name: Push NWS Alerts
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'   # every 5 minutes
+  workflow_dispatch:         # allows manual trigger from GitHub UI
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger alert check
+        run: |
+          curl -s -o /dev/null -w "%{http_code}" \
+            https://storm-watch-gamma.vercel.app/api/cron
