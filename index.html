@@ -677,7 +677,7 @@ function initMap() {
   map.on('zoomend', () => {
     if (!radarLayer) return;
     const z = map.getZoom();
-    radarLayer.setOpacity(z <= 8 ? 0.7 : Math.max(0.25, 0.7 - (z - 8) * 0.06));
+    radarLayer.setOpacity(0.7);
   });
   loadRadar();
 }
@@ -713,11 +713,11 @@ function showRadarFrame(idx) {
   if (!radarLayers[idx]) {
     const tileUrl = `https://tilecache.rainviewer.com${frame.path}/256/{z}/{x}/{y}/2/1_1.png`;
     radarLayers[idx] = L.tileLayer(tileUrl, {
-      opacity: 0, maxNativeZoom: 12, maxZoom: 19, zIndex: 200, attribution: 'RainViewer'
+      opacity: 0, maxNativeZoom: 15, maxZoom: 19, zIndex: 200, attribution: 'RainViewer'
     }).addTo(map);
   }
   radarLayer = radarLayers[idx];
-  radarLayer.setOpacity(map.getZoom() <= 8 ? 0.7 : Math.max(0.25, 0.7 - (map.getZoom() - 8) * 0.06));
+  radarLayer.setOpacity(0.7);
 
   // Time label
   const d = new Date(frame.time * 1000);
