@@ -164,9 +164,12 @@ async function handleSetLocation(chatId, query) {
   }
 }
 
-async function handleLocationShare(chatId, fromId, lat, lon) {
+async function handleLocationShare(chatId, fromId, lat, lon, silent = false) {
   const member = await findMember(fromId);
-  if (!member) { await sendTg(chatId, notLinkedMsg(fromId)); return; }
+  if (!member) {
+    if (!silent) await sendTg(chatId, notLinkedMsg(fromId));
+    return;
+  }
 
   // Reverse geocode to get a human-readable city name
   let city = `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
@@ -178,6 +181,12 @@ async function handleLocationShare(chatId, fromId, lat, lon) {
       city = data.display_name.split(',').slice(0, 3).join(',').trim();
     }
   } catch { /* fall back to coords */ }
+
+  // For live location updates, skip NWS check and reply — just update the DB
+  if (silent) {
+    await dbPatch(`members/${member.id}`, { lat, lon, city });
+    return;
+  }
 
   const nws = await getNwsProps(lat, lon);
   if (!nws) {
@@ -229,6 +238,15 @@ async function handleResume(chatId) {
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(200).send('OK');
+
+  // Handle live location updates (come as edited_message, not message)
+  const editedMsg = req.body?.edited_message;
+  if (editedMsg?.location) {
+    const chatId = String(editedMsg.chat.id);
+    const fromId = String(editedMsg.from?.id || editedMsg.chat.id);
+    try { await handleLocationShare(chatId, fromId, editedMsg.location.latitude, editedMsg.location.longitude, true); } catch (e) { console.error(e); }
+    return res.status(200).send('OK');
+  }
 
   const msg = req.body?.message;
   if (!msg) return res.status(200).send('OK');
