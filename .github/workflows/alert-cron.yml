@@ -12,5 +12,4 @@ jobs:
       - name: Trigger alert check
         run: |
           curl -s -o /dev/null -w "%{http_code}" \
-            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
-            "${{ secrets.APP_URL }}/api/cron"
+            https://storm-watch-dfw.vercel.app/api/cron

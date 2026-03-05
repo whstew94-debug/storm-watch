@@ -30,11 +30,6 @@ async function sendTg(chatId, html) {
 const SEVERITY_ICON = { Extreme: '🚨', Severe: '⛈', Moderate: '⚠️', Minor: '🔔' };
 
 export default async function handler(req, res) {
-  // Reject anything that isn't a legitimate Vercel cron invocation
-  if (req.headers.authorization !== `Bearer ${process.env.CRON_SECRET}`) {
-    return res.status(401).end('Unauthorized');
-  }
-
   const members = await dbGet('members');
   if (!members || typeof members !== 'object') return res.status(200).send('No members');
 
