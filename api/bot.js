@@ -164,9 +164,9 @@ async function handleSetLocation(chatId, query) {
   }
 }
 
-async function handleLocationShare(chatId, lat, lon) {
-  const member = await findMember(chatId);
-  if (!member) { await sendTg(chatId, notLinkedMsg(chatId)); return; }
+async function handleLocationShare(chatId, fromId, lat, lon) {
+  const member = await findMember(fromId);
+  if (!member) { await sendTg(chatId, notLinkedMsg(fromId)); return; }
 
   // Reverse geocode to get a human-readable city name
   let city = `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
@@ -237,7 +237,8 @@ export default async function handler(req, res) {
 
   // Handle shared location (tap the 📎 attach button → Location in Telegram)
   if (msg.location) {
-    try { await handleLocationShare(chatId, msg.location.latitude, msg.location.longitude); } catch (e) { console.error(e); }
+    const fromId = String(msg.from?.id || msg.chat.id);
+    try { await handleLocationShare(chatId, fromId, msg.location.latitude, msg.location.longitude); } catch (e) { console.error(e); }
     return res.status(200).send('OK');
   }
 

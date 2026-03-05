@@ -224,9 +224,9 @@ async function handleSetLocation(chatId, query) {
   }
 }
 
-async function handleLocationShare(chatId, lat, lon) {
-  const member = await findMember(chatId);
-  if (!member) { await sendTg(chatId, notLinkedMsg(chatId)); return; }
+async function handleLocationShare(chatId, fromId, lat, lon) {
+  const member = await findMember(fromId);
+  if (!member) { await sendTg(chatId, notLinkedMsg(fromId)); return; }
 
   let city = `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
   try {
@@ -324,7 +324,8 @@ exports.telegramWebhook = functions.https.onRequest(async (req, res) => {
     const chatId = String(msg.chat.id);
 
     if (msg.location) {
-      try { await handleLocationShare(chatId, msg.location.latitude, msg.location.longitude); } catch (e) { console.error(e); }
+      const fromId = String(msg.from?.id || msg.chat.id);
+      try { await handleLocationShare(chatId, fromId, msg.location.latitude, msg.location.longitude); } catch (e) { console.error(e); }
       res.sendStatus(200); return;
     }
 

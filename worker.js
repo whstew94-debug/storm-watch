@@ -242,9 +242,9 @@ async function handleSetLocation(chatId, query, env) {
   }
 }
 
-async function handleLocationShare(chatId, lat, lon, env) {
-  const member = await findMember(chatId, env);
-  if (!member) { await sendTg(chatId, notLinkedMsg(chatId), env.TG_TOKEN); return; }
+async function handleLocationShare(chatId, fromId, lat, lon, env) {
+  const member = await findMember(fromId, env);
+  if (!member) { await sendTg(chatId, notLinkedMsg(fromId), env.TG_TOKEN); return; }
 
   let city = `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
   try {
@@ -348,7 +348,8 @@ export default {
     const chatId = String(msg.chat.id);
 
     if (msg.location) {
-      try { await handleLocationShare(chatId, msg.location.latitude, msg.location.longitude, env); } catch (e) { console.error(e); }
+      const fromId = String(msg.from?.id || msg.chat.id);
+      try { await handleLocationShare(chatId, fromId, msg.location.latitude, msg.location.longitude, env); } catch (e) { console.error(e); }
       return new Response('OK', { status: 200 });
     }
 
