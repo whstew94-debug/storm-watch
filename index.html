@@ -531,7 +531,7 @@ let currentUser = null; // the logged-in member's Firebase key
 let members = {};
 let activeAlerts = [];
 let eventLog = [];
-let map, radarLayer;
+let map, radarLayer, satelliteLayer;
 let forecastLat = 33.2148, forecastLon = -97.1331; // default Denton
 let forecastMemberName = 'Your';
 let selectedMemberForModal = null;
@@ -665,13 +665,26 @@ async function loadRadar() {
   try {
     const res = await fetch('https://api.rainviewer.com/public/weather-maps.json');
     const data = await res.json();
+
+    // Satellite infrared — always visible, shows cloud cover even with no rain
+    const satFrames = data.satellite?.infrared || [];
+    if (satFrames.length) {
+      if (satelliteLayer) map.removeLayer(satelliteLayer);
+      satelliteLayer = L.tileLayer(
+        `https://tilecache.rainviewer.com${satFrames[satFrames.length - 1].path}/512/{z}/{x}/{y}/0/0_0.png`,
+        { opacity: 0.4, maxNativeZoom: 12, maxZoom: 20, zIndex: 150, crossOrigin: true }
+      );
+      satelliteLayer.addTo(map);
+    }
+
+    // Radar — shows precipitation on top
     const frames = data.radar?.past || [];
     if (!frames.length) return;
-    const latest = frames[frames.length - 1];
     if (radarLayer) map.removeLayer(radarLayer);
-    radarLayer = L.tileLayer(`https://tilecache.rainviewer.com${latest.path}/512/{z}/{x}/{y}/2/1_1.png`, {
-      opacity: 0.65, maxNativeZoom: 12, maxZoom: 20, zIndex: 200, crossOrigin: true
-    });
+    radarLayer = L.tileLayer(
+      `https://tilecache.rainviewer.com${frames[frames.length - 1].path}/512/{z}/{x}/{y}/2/1_1.png`,
+      { opacity: 0.65, maxNativeZoom: 12, maxZoom: 20, zIndex: 200, crossOrigin: true }
+    );
     radarLayer.addTo(map);
   } catch(e) { console.log('Radar error', e); }
 }
