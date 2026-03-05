@@ -12,4 +12,4 @@ jobs:
       - name: Trigger alert check
         run: |
           curl -s -o /dev/null -w "%{http_code}" \
-            https://storm-watch-dfw.vercel.app/api/cron
+            https://storm-watch-gamma.vercel.app/api/cron
