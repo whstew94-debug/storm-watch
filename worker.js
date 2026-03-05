@@ -242,9 +242,12 @@ async function handleSetLocation(chatId, query, env) {
   }
 }
 
-async function handleLocationShare(chatId, fromId, lat, lon, env) {
+async function handleLocationShare(chatId, fromId, lat, lon, env, silent = false) {
   const member = await findMember(fromId, env);
-  if (!member) { await sendTg(chatId, notLinkedMsg(fromId), env.TG_TOKEN); return; }
+  if (!member) {
+    if (!silent) await sendTg(chatId, notLinkedMsg(fromId), env.TG_TOKEN);
+    return;
+  }
 
   let city = `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
   try {
@@ -255,6 +258,12 @@ async function handleLocationShare(chatId, fromId, lat, lon, env) {
       city = data.display_name.split(',').slice(0, 3).join(',').trim();
     }
   } catch { /* fall back to coords */ }
+
+  // For live location updates, skip NWS check and reply — just update the DB
+  if (silent) {
+    await dbPatch(`members/${member.id}`, { lat, lon, city }, env);
+    return;
+  }
 
   const nws = await getNwsProps(lat, lon, env);
   if (!nws) {
@@ -339,6 +348,15 @@ export default {
     try {
       body = await request.json();
     } catch {
+      return new Response('OK', { status: 200 });
+    }
+
+    // Handle live location updates (come as edited_message, not message)
+    const editedMsg = body?.edited_message;
+    if (editedMsg?.location) {
+      const chatId = String(editedMsg.chat.id);
+      const fromId = String(editedMsg.from?.id || editedMsg.chat.id);
+      try { await handleLocationShare(chatId, fromId, editedMsg.location.latitude, editedMsg.location.longitude, env, true); } catch (e) { console.error(e); }
       return new Response('OK', { status: 200 });
     }
 
