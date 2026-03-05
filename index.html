@@ -67,6 +67,11 @@ body{background:var(--bg);color:var(--text);font-family:'Barlow',sans-serif;heig
 .alert-event{font-size:12px;font-weight:600;color:var(--red)}
 .alert-area{font-size:11px;color:var(--text2);margin-top:2px}
 .no-alert{font-size:12px;color:var(--green);display:flex;align-items:center;gap:5px}
+/* Map controls */
+#map-controls{position:absolute;top:90px;right:10px;z-index:1001;display:flex;flex-direction:column;gap:6px}
+#lightning-toggle{background:rgba(6,8,16,.85);border:1px solid var(--border);color:var(--text2);font-family:'Share Tech Mono',monospace;font-size:11px;padding:6px 10px;border-radius:4px;cursor:pointer;transition:all .2s;letter-spacing:1px;white-space:nowrap}
+#lightning-toggle:hover{border-color:var(--cyan2);color:var(--text)}
+#lightning-toggle.active{background:rgba(255,234,0,.12);border-color:rgba(255,234,0,.6);color:#ffe600;text-shadow:0 0 8px rgba(255,234,0,.6)}
 /* Radar legend */
 #radar-legend{position:absolute;bottom:30px;left:10px;background:rgba(6,8,16,.85);border:1px solid var(--border);border-radius:6px;padding:8px 10px;z-index:1000;pointer-events:none}
 #radar-legend-title{font-size:10px;letter-spacing:2px;color:var(--text2);font-family:'Barlow Condensed',sans-serif;text-transform:uppercase;margin-bottom:5px}
@@ -306,6 +311,9 @@ body.map-active #sidebar-toggle{display:block}
     <!-- MAP -->
     <div id="map-panel" class="active">
       <div id="map"></div>
+      <div id="map-controls">
+        <button id="lightning-toggle" onclick="toggleLightning()" title="Toggle lightning strikes">⚡ Lightning</button>
+      </div>
       <div id="radar-legend">
         <div id="radar-legend-title">RADAR INTENSITY</div>
         <div id="radar-bar"></div>
@@ -515,7 +523,7 @@ async function sendTelegramToAll(message) {
   if (!snap.exists()) return;
   snap.forEach(child => {
     const m = child.val();
-    if (m.telegramId) sendTelegram(m.telegramId, message);
+    if (m.telegramId && !m.alertsPaused) sendTelegram(m.telegramId, message);
   });
 }
 
@@ -531,7 +539,8 @@ let currentUser = null; // the logged-in member's Firebase key
 let members = {};
 let activeAlerts = [];
 let eventLog = [];
-let map, radarLayer;
+let map, radarLayer, lightningLayer;
+let lightningEnabled = false;
 let forecastLat = 33.2148, forecastLon = -97.1331; // default Denton
 let forecastMemberName = 'Your';
 let selectedMemberForModal = null;
@@ -664,10 +673,37 @@ async function loadRadar() {
     const latest = frames[frames.length - 1];
     if (radarLayer) map.removeLayer(radarLayer);
     radarLayer = L.tileLayer(`https://tilecache.rainviewer.com${latest.path}/512/{z}/{x}/{y}/2/1_1.png`, {
-      opacity: 0.65, maxZoom: 15, zIndex: 200, crossOrigin: true
+      opacity: 0.65, maxNativeZoom: 8, maxZoom: 20, zIndex: 200, crossOrigin: true
     });
     radarLayer.addTo(map);
   } catch(e) { console.log('Radar error', e); }
+}
+
+async function loadLightning() {
+  if (!lightningEnabled) return;
+  try {
+    const res = await fetch('https://api.rainviewer.com/public/weather-maps.json');
+    const data = await res.json();
+    const frames = data.radar?.past || [];
+    if (!frames.length) return;
+    const time = frames[frames.length - 1].time;
+    if (lightningLayer) map.removeLayer(lightningLayer);
+    lightningLayer = L.tileLayer(`https://tilecache.rainviewer.com/v2/lightning/${time}/512/{z}/{x}/{y}/3/0_1.png`, {
+      opacity: 0.9, maxNativeZoom: 8, maxZoom: 20, zIndex: 300, crossOrigin: true
+    });
+    lightningLayer.addTo(map);
+  } catch(e) { console.log('Lightning error', e); }
+}
+
+function toggleLightning() {
+  lightningEnabled = !lightningEnabled;
+  const btn = document.getElementById('lightning-toggle');
+  btn.classList.toggle('active', lightningEnabled);
+  if (lightningEnabled) {
+    loadLightning();
+  } else {
+    if (lightningLayer) { map.removeLayer(lightningLayer); lightningLayer = null; }
+  }
 }
 
 // ─── MEMBERS ───────────────────────────────────────────────────────
@@ -1012,7 +1048,7 @@ async function sendLocationAwareAlerts(newAlerts) {
   const snap = await get(ref(db, 'members'));
   if (!snap.exists()) return;
   for (const child of Object.values(snap.val() || {})) {
-    if (!child.telegramId) continue;
+    if (!child.telegramId || child.alertsPaused) continue;
     let alertsForMember = newAlerts;
     // If member has GPS coords, query NWS to see which alerts affect their exact location
     if (child.lat && child.lon) {
@@ -1120,13 +1156,14 @@ function refreshAll() {
   loadRadar();
   loadAlerts();
   loadStormData();
+  if (lightningEnabled) loadLightning();
   if (document.getElementById('forecast-panel').classList.contains('active')) loadForecast();
   document.getElementById('status-refresh').textContent = `Refreshed ${new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}`;
   logEvent('↻', 'Manual refresh');
 }
 
 function startRefreshLoop() {
-  setInterval(() => { loadAlerts(); loadRadar(); }, 5 * 60 * 1000);
+  setInterval(() => { loadAlerts(); loadRadar(); if (lightningEnabled) loadLightning(); }, 5 * 60 * 1000);
   // Daily forecast at 7am
   const now = new Date();
   const next7am = new Date(now);
