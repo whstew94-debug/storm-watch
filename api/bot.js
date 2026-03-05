@@ -243,7 +243,12 @@ export default async function handler(req, res) {
   }
 
   const text    = (msg.text || '').trim();
-  if (!text.startsWith('/')) return res.status(200).send('OK');
+
+  // DEBUG: echo back any non-command message so we can see what Telegram is sending
+  if (!text.startsWith('/')) {
+    await sendTg(chatId, `🔍 DEBUG — message received but no location found.\n<pre>${JSON.stringify({ keys: Object.keys(msg), hasLocation: !!msg.location, type: msg.chat?.type }, null, 2)}</pre>`);
+    return res.status(200).send('OK');
+  }
 
   const parts   = text.split(/\s+/);
   const command = parts[0].toLowerCase().split('@')[0];
