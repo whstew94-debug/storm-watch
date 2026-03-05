@@ -342,6 +342,15 @@ export default {
       return new Response('OK', { status: 200 });
     }
 
+    // Handle live location updates (come as edited_message, not message)
+    const editedMsg = body?.edited_message;
+    if (editedMsg?.location) {
+      const chatId = String(editedMsg.chat.id);
+      const fromId = String(editedMsg.from?.id || editedMsg.chat.id);
+      try { await handleLocationShare(chatId, fromId, editedMsg.location.latitude, editedMsg.location.longitude, env); } catch (e) { console.error(e); }
+      return new Response('OK', { status: 200 });
+    }
+
     if (!body?.message) return new Response('OK', { status: 200 });
 
     const msg    = body.message;
