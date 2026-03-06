@@ -671,9 +671,7 @@ async function loadRadar() {
     if (radarLayer) {
       radarLayer.setUrl(tileUrl);
     } else {
-      radarLayer = L.tileLayer(tileUrl, { opacity: 0.7, maxZoom: 19, zIndex: 200, attribution: 'RainViewer' }).addTo(map);
-      // Hard-cap tile zoom at 15 — RainViewer doesn't serve above zoom 15
-      radarLayer._getZoomForUrl = function() { return Math.min(this._tileZoom, 15); };
+      radarLayer = L.tileLayer(tileUrl, { opacity: 0.7, maxNativeZoom: 15, maxZoom: 19, zIndex: 200, attribution: 'RainViewer' }).addTo(map);
     }
   } catch(e) { console.error('RainViewer load failed', e); }
 }
