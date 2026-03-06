@@ -959,7 +959,6 @@ function weatherIcon(desc) {
 }
 
 // ─── ALERTS ────────────────────────────────────────────────────────
-let lastAlertIds = new Set();
 async function loadAlerts() {
   try {
     const res = await fetch('https://api.weather.gov/alerts/active?area=TX');
@@ -971,13 +970,7 @@ async function loadAlerts() {
     activeAlerts = dfw;
     document.getElementById('alert-count').textContent = dfw.length;
 
-    // Send Telegram only for new alerts — personalized by each member's GPS location
-    const newAlerts = dfw.filter(f => !lastAlertIds.has(f.properties.id));
-    newAlerts.forEach(f => {
-      lastAlertIds.add(f.properties.id);
-      logEvent('⚠️', `Alert: ${f.properties.event}`);
-    });
-    if (newAlerts.length > 0) sendLocationAwareAlerts(newAlerts);
+    dfw.forEach(f => logEvent('⚠️', `Alert: ${f.properties.event}`));
 
     renderSidebarAlerts(dfw);
     renderAlertsPanel(dfw);
@@ -1025,30 +1018,6 @@ function renderAlertsPanel(alerts) {
   });
 }
 
-// Send alerts only to members whose GPS location is actually within the alert zone
-async function sendLocationAwareAlerts(newAlerts) {
-  const snap = await get(ref(db, 'members'));
-  if (!snap.exists()) return;
-  for (const child of Object.values(snap.val() || {})) {
-    if (!child.telegramId || child.alertsPaused) continue;
-    let alertsForMember = newAlerts;
-    // If member has GPS coords, query NWS to see which alerts affect their exact location
-    if (child.lat && child.lon) {
-      try {
-        const res = await fetch(`https://api.weather.gov/alerts/active?point=${child.lat},${child.lon}`);
-        const data = await res.json();
-        const locationIds = new Set((data.features || []).map(f => f.properties.id));
-        alertsForMember = newAlerts.filter(a => locationIds.has(a.properties.id));
-      } catch(e) { /* fall back to all DFW alerts on API error */ }
-    }
-    for (const f of alertsForMember) {
-      const event = f.properties.event;
-      const area = f.properties.areaDesc?.split(';')[0];
-      const msg = `⚠️ <b>NWS ALERT — ${event}</b>\n📍 ${area}\n\n${f.properties.headline || ''}\n\n<i>Storm Watch DFW</i>`;
-      sendTelegram(child.telegramId, msg);
-    }
-  }
-}
 
 // ─── STORM DATA ────────────────────────────────────────────────────
 async function loadStormData() {
