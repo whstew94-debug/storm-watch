@@ -667,12 +667,17 @@ async function loadRadar() {
     const past = data.radar?.past || [];
     if (!past.length) return;
     const frame = past[past.length - 1];
-    const tileUrl = `https://tilecache.rainviewer.com${frame.path}/256/{z}/{x}/{y}/2/1_1.png`;
+    const host = data.host || 'https://tilecache.rainviewer.com';
+    // maxNativeZoom:6 — RainViewer free-tier hard cap; Leaflet upscales for higher zooms
+    const opts = { opacity: 0.7, maxNativeZoom: 6, maxZoom: 19, zIndex: 200, attribution: 'RainViewer' };
+    const tileUrl = `${host}${frame.path}/256/{z}/{x}/{y}/6/1_1.png`;
     if (radarLayer) {
-      radarLayer.setUrl(tileUrl);
-    } else {
-      radarLayer = L.tileLayer(tileUrl, { opacity: 0.7, maxNativeZoom: 15, maxZoom: 19, zIndex: 200, attribution: 'RainViewer' }).addTo(map);
+      map.removeLayer(radarLayer);
     }
+    radarLayer = L.tileLayer(tileUrl, opts).addTo(map);
+    radarLayer.on('tileerror', () => {
+      if (radarLayer) { map.removeLayer(radarLayer); radarLayer = null; }
+    });
   } catch(e) { console.error('RainViewer load failed', e); }
 }
 
