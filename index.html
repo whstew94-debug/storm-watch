@@ -668,8 +668,13 @@ async function loadRadar() {
     if (!past.length) return;
     const frame = past[past.length - 1];
     const tileUrl = `https://tilecache.rainviewer.com${frame.path}/256/{z}/{x}/{y}/2/1_1.png`;
-    if (radarLayer) radarLayer.setUrl(tileUrl);
-    else radarLayer = L.tileLayer(tileUrl, { opacity: 0.7, maxNativeZoom: 15, maxZoom: 19, zIndex: 200, attribution: 'RainViewer' }).addTo(map);
+    if (radarLayer) {
+      radarLayer.setUrl(tileUrl);
+    } else {
+      radarLayer = L.tileLayer(tileUrl, { opacity: 0.7, maxZoom: 19, zIndex: 200, attribution: 'RainViewer' }).addTo(map);
+      // Hard-cap tile zoom at 15 — RainViewer doesn't serve above zoom 15
+      radarLayer._getZoomForUrl = function() { return Math.min(this._tileZoom, 15); };
+    }
   } catch(e) { console.error('RainViewer load failed', e); }
 }
 
