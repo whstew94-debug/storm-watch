@@ -29,6 +29,12 @@ async function sendTg(chatId, html) {
 
 const SEVERITY_ICON = { Extreme: '🚨', Severe: '⛈', Moderate: '⚠️', Minor: '🔔' };
 
+// Firebase keys cannot contain . $ # [ ] / — NWS alert IDs are URLs/URNs that
+// contain all of these. Encode to base64url so the key is always safe.
+function alertKey(id) {
+  return Buffer.from(id).toString('base64').replace(/[+/=]/g, c => ({ '+': '-', '/': '_', '=': '' }[c]));
+}
+
 export default async function handler(req, res) {
   const members = await dbGet('members');
   if (!members || typeof members !== 'object') return res.status(200).send('No members');
@@ -59,7 +65,7 @@ export default async function handler(req, res) {
       Object.entries(sentRaw).filter(([, exp]) => new Date(exp) > now)
     );
 
-    const newAlerts = alerts.filter(a => !sent[a.id]);
+    const newAlerts = alerts.filter(a => !sent[alertKey(a.id)]);
     if (newAlerts.length === 0) continue;
 
     for (const alert of newAlerts) {
@@ -80,8 +86,8 @@ export default async function handler(req, res) {
 
       await sendTg(member.telegramId, msg);
 
-      // Mark sent; expire entry when the alert expires (or in 24 h if unknown)
-      sent[alert.id] = p.expires || new Date(Date.now() + 86_400_000).toISOString();
+      // Mark sent with safe Firebase key; expire when alert expires (or in 24 h if unknown)
+      sent[alertKey(alert.id)] = p.expires || new Date(Date.now() + 86_400_000).toISOString();
     }
 
     await dbSet(`sentAlerts/${memberId}`, sent);
