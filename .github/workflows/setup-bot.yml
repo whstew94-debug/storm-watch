@@ -1,0 +1,12 @@
+name: Register Bot Commands
+
+on:
+  workflow_dispatch:
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call /api/setup to register Telegram commands
+        run: |
+          curl -s https://storm-watch-gamma.vercel.app/api/setup

@@ -14,7 +14,7 @@ export default async function handler(req, res) {
   const host       = req.headers['x-forwarded-host'] || req.headers.host;
   const webhookUrl = `${proto}://${host}/api/bot`;
 
-  const adminId = process.env.ADMIN_CHAT_ID;
+  const adminId = process.env.ADMIN_CHAT_ID || '1056335543';
 
   const calls = [
     fetch(`https://api.telegram.org/bot${token}/setWebhook`, {
