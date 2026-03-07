@@ -59,6 +59,7 @@ export default async function handler(req, res) {
             { command: 'stop',        description: 'Pause storm alerts' },
             { command: 'resume',      description: 'Re-enable storm alerts' },
             { command: 'broadcast',   description: 'Send a message to all members' },
+            { command: 'members',     description: 'List all members and their status' },
           ],
           scope: { type: 'chat', chat_id: Number(adminId) },
         })
