@@ -602,6 +602,11 @@ function requestGPS() {
         update(ref(db, `members/${currentUser}`), { lat, lon, online: true });
         forecastLat = lat;
         forecastLon = lon;
+        // Update local cache immediately so marker moves without waiting for Firebase round-trip
+        if (members[currentUser]) {
+          members[currentUser].lat = lat;
+          members[currentUser].lon = lon;
+        }
       }
       setGPSActive(true);
       renderMemberMarkers();
