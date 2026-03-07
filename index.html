@@ -578,6 +578,7 @@ function setGPSActive(active) {
 }
 
 let gpsWatchId = null;
+let gpsRetryTimeout = null;
 
 function requestGPS() {
   if (!navigator.geolocation) {
@@ -585,10 +586,14 @@ function requestGPS() {
     offerManualLocation();
     return;
   }
-  // Clear any existing watch before starting a new one
+  // Clear any existing watch and retry timer before starting a new one
   if (gpsWatchId !== null) {
     navigator.geolocation.clearWatch(gpsWatchId);
     gpsWatchId = null;
+  }
+  if (gpsRetryTimeout !== null) {
+    clearTimeout(gpsRetryTimeout);
+    gpsRetryTimeout = null;
   }
   const mobLabel = document.getElementById('mob-gps-label');
   if (mobLabel) mobLabel.textContent = '...';
@@ -615,14 +620,16 @@ function requestGPS() {
       setGPSActive(false);
       if (mobLabel) mobLabel.textContent = 'GPS';
       if (err.code === 1) {
+        // Permission denied — can't retry, offer manual fallback
         document.getElementById('gps-text').textContent = 'Blocked';
         offerManualLocation();
       } else {
-        document.getElementById('gps-text').textContent = 'Failed';
-        offerManualLocation();
+        // Timeout or position unavailable — retry automatically
+        document.getElementById('gps-text').textContent = 'Retrying...';
+        gpsRetryTimeout = setTimeout(() => requestGPS(), 5000);
       }
     },
-    { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
+    { enableHighAccuracy: true, timeout: Infinity, maximumAge: 0 }
   );
 }
 
