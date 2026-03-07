@@ -224,6 +224,25 @@ async function handleStatus(chatId) {
 
 const ADMIN_ID = process.env.ADMIN_CHAT_ID || '1056335543';
 
+async function handleMembers(chatId) {
+  if (String(chatId) !== ADMIN_ID) {
+    await sendTg(chatId, `❌ This command is admin-only.`);
+    return;
+  }
+  const allData = await dbGet('members');
+  if (!allData || typeof allData !== 'object') { await sendTg(chatId, `No members found.`); return; }
+  const members = Object.values(allData).filter(m => m.name);
+  if (!members.length) { await sendTg(chatId, `No members found.`); return; }
+  let msg = `👥 <b>Storm Watch DFW — ${members.length} Member${members.length !== 1 ? 's' : ''}</b>\n\n`;
+  members.forEach((m, i) => {
+    const status = m.alertsPaused ? '🔕 Paused' : '🔔 Active';
+    const loc    = m.city || (m.lat ? `${m.lat}, ${m.lon}` : 'No location');
+    const linked = m.telegramId ? '✅' : '⚠️ not linked';
+    msg += `${i + 1}. <b>${m.name}</b> · 📍 ${loc} · ${status} ${linked}\n`;
+  });
+  await sendTg(chatId, msg);
+}
+
 async function handleBroadcast(chatId, message) {
   if (String(chatId) !== ADMIN_ID) {
     await sendTg(chatId, `❌ This command is admin-only.`);
@@ -303,6 +322,7 @@ export default async function handler(req, res) {
       case '/stop':        await handleStop(chatId);                break;
       case '/resume':      await handleResume(chatId);              break;
       case '/broadcast':   await handleBroadcast(chatId, args);    break;
+      case '/members':     await handleMembers(chatId);            break;
     }
   } catch (e) {
     console.error(e);
