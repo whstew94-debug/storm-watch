@@ -567,41 +567,81 @@ function loadCurrentUser() {
   }
 }
 
-function setGPSActive(active) {
-  document.getElementById('gps-dot').classList.toggle('active', active);
-  document.getElementById('gps-dot-mobile').classList.toggle('active', active);
-  const mobDot = document.getElementById('mob-gps-dot');
-  const mobLabel = document.getElementById('mob-gps-label');
-  if (mobDot) mobDot.style.background = active ? 'var(--green)' : 'var(--text3)';
-  if (mobLabel) mobLabel.textContent = active ? 'LIVE' : 'GPS';
-  if (active) document.getElementById('gps-text').textContent = 'GPS active';
-}
+// ─── GPS ─────────────────────────────────────────────────────────────────────
+// Browsers can return IP-based "geolocation" with accuracy of 5–100 km.
+// We reject any fix worse than MAX_ACCURACY_M and warn the user so they
+// know to open the app on their phone instead.
+const MAX_ACCURACY_M = 500;
 
 let gpsWatchId = null;
 let gpsRetryTimeout = null;
 let gpsHeartbeatInterval = null;
 
-function pushPosition(lat, lon) {
+function setGPSActive(active, accuracyM) {
+  document.getElementById('gps-dot').classList.toggle('active', active);
+  document.getElementById('gps-dot-mobile').classList.toggle('active', active);
+  const mobDot   = document.getElementById('mob-gps-dot');
+  const mobLabel = document.getElementById('mob-gps-label');
+  if (mobDot)   mobDot.style.background = active ? 'var(--green)' : 'var(--text3)';
+  if (mobLabel) mobLabel.textContent    = active ? 'LIVE' : 'GPS';
+  if (active) {
+    const acc = accuracyM != null ? ` ±${accuracyM < 1000 ? Math.round(accuracyM) + 'm' : (accuracyM/1000).toFixed(1) + 'km'}` : '';
+    document.getElementById('gps-text').textContent = 'GPS active' + acc;
+  }
+}
+
+// Accept a position only if it is precise enough to be useful.
+// IP-geolocation fixes are typically 5,000–50,000 m accuracy — we reject those.
+function isAccurate(pos) {
+  return pos.coords.accuracy <= MAX_ACCURACY_M;
+}
+
+function pushPosition(pos) {
   if (!currentUser) return;
-  update(ref(db, `members/${currentUser}`), { lat, lon, online: true, lastSeen: Date.now() });
+  const { latitude: lat, longitude: lon, accuracy } = pos.coords;
+  update(ref(db, `members/${currentUser}`), { lat, lon, accuracy: Math.round(accuracy), online: true, lastSeen: Date.now() });
   forecastLat = lat;
   forecastLon = lon;
   if (members[currentUser]) {
-    members[currentUser].lat = lat;
-    members[currentUser].lon = lon;
+    members[currentUser].lat      = lat;
+    members[currentUser].lon      = lon;
+    members[currentUser].accuracy = Math.round(accuracy);
+    members[currentUser].lastSeen = Date.now();
   }
-  setGPSActive(true);
+  setGPSActive(true, accuracy);
   renderMemberMarkers();
+}
+
+function showInaccurateWarning(accuracyM) {
+  const km = (accuracyM / 1000).toFixed(0);
+  document.getElementById('gps-text').textContent = `Inaccurate (±${km}km)`;
+  const mobLabel = document.getElementById('mob-gps-label');
+  if (mobLabel) mobLabel.textContent = 'POOR';
+  setGPSActive(false);
+  // Only prompt once per session — don't spam them
+  if (!requestGPS._warnedInaccurate) {
+    requestGPS._warnedInaccurate = true;
+    // Give the UI a moment to settle before the alert
+    setTimeout(() => {
+      const fix = confirm(
+        `Your browser returned a location with ±${km} km accuracy — likely an IP guess, not your real position.\n\n` +
+        `For accurate tracking, open Storm Watch on your phone.\n\n` +
+        `Press OK to enter your location manually instead.`
+      );
+      if (fix) offerManualLocation();
+    }, 300);
+  }
 }
 
 function startGPSHeartbeat() {
   if (gpsHeartbeatInterval !== null) return;
-  // Poll position every 10 seconds so the map updates like Find My Friends even when stationary
+  // Push position every 10 s so markers update continuously like Find My Friends,
+  // even when the device thinks you haven't moved.
   gpsHeartbeatInterval = setInterval(() => {
     navigator.geolocation.getCurrentPosition(
-      pos => pushPosition(pos.coords.latitude, pos.coords.longitude),
-      () => {}, // silent — watchPosition handles errors
-      { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
+      pos => { if (isAccurate(pos)) pushPosition(pos); },
+      () => {},
+      { enableHighAccuracy: true, timeout: 9000, maximumAge: 0 }
     );
   }, 10000);
 }
@@ -619,16 +659,11 @@ function requestGPS() {
     offerManualLocation();
     return;
   }
-  // Clear any existing watch and retry timer before starting a new one
-  if (gpsWatchId !== null) {
-    navigator.geolocation.clearWatch(gpsWatchId);
-    gpsWatchId = null;
-  }
-  if (gpsRetryTimeout !== null) {
-    clearTimeout(gpsRetryTimeout);
-    gpsRetryTimeout = null;
-  }
+  if (gpsWatchId !== null)      { navigator.geolocation.clearWatch(gpsWatchId); gpsWatchId = null; }
+  if (gpsRetryTimeout !== null) { clearTimeout(gpsRetryTimeout); gpsRetryTimeout = null; }
   stopGPSHeartbeat();
+  requestGPS._warnedInaccurate = false;
+
   const mobLabel = document.getElementById('mob-gps-label');
   if (mobLabel) mobLabel.textContent = '...';
   document.getElementById('gps-text').textContent = 'Locating...';
@@ -636,19 +671,23 @@ function requestGPS() {
 
   gpsWatchId = navigator.geolocation.watchPosition(
     pos => {
-      pushPosition(pos.coords.latitude, pos.coords.longitude);
-      startGPSHeartbeat(); // begin 10s heartbeat once we have a first fix
+      if (!isAccurate(pos)) {
+        // Browser returned a coarse IP-based fix — warn and keep waiting.
+        // If the device can eventually get a real GPS/WiFi fix it will fire again.
+        showInaccurateWarning(pos.coords.accuracy);
+        return;
+      }
+      pushPosition(pos);
+      startGPSHeartbeat();
     },
     err => {
       setGPSActive(false);
       stopGPSHeartbeat();
       if (mobLabel) mobLabel.textContent = 'GPS';
       if (err.code === 1) {
-        // Permission denied — can't retry, offer manual fallback
         document.getElementById('gps-text').textContent = 'Blocked';
         offerManualLocation();
       } else {
-        // Timeout or position unavailable — retry automatically
         document.getElementById('gps-text').textContent = 'Retrying...';
         gpsRetryTimeout = setTimeout(() => requestGPS(), 5000);
       }
@@ -657,8 +696,9 @@ function requestGPS() {
   );
 }
 
-// Mark offline when tab closes
+// Mark offline and stop tracking when the tab closes
 window.addEventListener('beforeunload', () => {
+  stopGPSHeartbeat();
   if (currentUser) update(ref(db, `members/${currentUser}`), { online: false });
 });
 
@@ -852,7 +892,12 @@ async function renderMemberMarkers() {
       </div>`,
       className: '', iconSize: [60, 30], iconAnchor: [30, 8]
     });
-    const popup = `<b style="color:#00e5ff">${m.name}</b><br><small>${m.city || m.zip || ''}</small>${m.checkedIn ? '<br><span style="color:#00e676">✓ Checked in safe</span>' : ''}`;
+    const acc = m.accuracy != null ? `<br><small style="color:var(--text3)">±${m.accuracy < 1000 ? m.accuracy + 'm' : (m.accuracy/1000).toFixed(1) + 'km'} accuracy</small>` : '';
+    const age = m.lastSeen ? (() => {
+      const s = Math.round((Date.now() - m.lastSeen) / 1000);
+      return s < 60 ? `${s}s ago` : s < 3600 ? `${Math.floor(s/60)}m ago` : `${Math.floor(s/3600)}h ago`;
+    })() : '';
+    const popup = `<b style="color:#00e5ff">${m.name}</b><br><small>${m.city || m.zip || ''}</small>${acc}${age ? `<br><small style="color:var(--text3)">Updated ${age}</small>` : ''}${m.checkedIn ? '<br><span style="color:#00e676">✓ Checked in safe</span>' : ''}`;
     if (memberMarkers[key]) {
       // Move and restyle existing marker — no flicker, no DOM churn
       memberMarkers[key].setLatLng([lat, lon]);
