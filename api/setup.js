@@ -14,13 +14,16 @@ export default async function handler(req, res) {
   const host       = req.headers['x-forwarded-host'] || req.headers.host;
   const webhookUrl = `${proto}://${host}/api/bot`;
 
-  const [whData] = await Promise.all([
+  const adminId = process.env.ADMIN_CHAT_ID;
+
+  const calls = [
     fetch(`https://api.telegram.org/bot${token}/setWebhook`, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({ url: webhookUrl, allowed_updates: ['message'] })
     }).then(r => r.json()),
 
+    // Public command list (visible to all users)
     fetch(`https://api.telegram.org/bot${token}/setMyCommands`, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -35,8 +38,35 @@ export default async function handler(req, res) {
         { command: 'stop',        description: 'Pause storm alerts' },
         { command: 'resume',      description: 'Re-enable storm alerts' },
       ]})
-    })
-  ]);
+    }),
+  ];
+
+  // Admin-only command list (only visible in your chat)
+  if (adminId) {
+    calls.push(
+      fetch(`https://api.telegram.org/bot${token}/setMyCommands`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({
+          commands: [
+            { command: 'start',       description: 'Get started & see your settings' },
+            { command: 'weather',     description: 'Current forecast for your location' },
+            { command: 'alerts',      description: 'Active NWS warnings for your area' },
+            { command: 'checkin',     description: 'Mark yourself as safe' },
+            { command: 'setlocation', description: 'Change your location (city, state or zip)' },
+            { command: 'mylocation',  description: 'See your saved location' },
+            { command: 'status',      description: 'See who has checked in as safe' },
+            { command: 'stop',        description: 'Pause storm alerts' },
+            { command: 'resume',      description: 'Re-enable storm alerts' },
+            { command: 'broadcast',   description: 'Send a message to all members' },
+          ],
+          scope: { type: 'chat', chat_id: Number(adminId) },
+        })
+      })
+    );
+  }
+
+  const [whData] = await Promise.all(calls);
 
   if (whData.ok) {
     res.setHeader('Content-Type', 'text/html');
