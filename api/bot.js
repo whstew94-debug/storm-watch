@@ -222,8 +222,10 @@ async function handleStatus(chatId) {
   await sendTg(chatId, msg);
 }
 
+const ADMIN_ID = process.env.ADMIN_CHAT_ID || '1056335543';
+
 async function handleBroadcast(chatId, message) {
-  if (String(chatId) !== String(process.env.ADMIN_CHAT_ID)) {
+  if (String(chatId) !== ADMIN_ID) {
     await sendTg(chatId, `❌ This command is admin-only.`);
     return;
   }
