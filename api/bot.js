@@ -222,6 +222,27 @@ async function handleStatus(chatId) {
   await sendTg(chatId, msg);
 }
 
+async function handleBroadcast(chatId, message) {
+  if (String(chatId) !== String(process.env.ADMIN_CHAT_ID)) {
+    await sendTg(chatId, `❌ This command is admin-only.`);
+    return;
+  }
+  if (!message) {
+    await sendTg(chatId,
+      `📢 <b>Usage:</b> /broadcast [your message]\n\n` +
+      `Example:\n<i>/broadcast Storms pushing east, should clear by 9pm — stay safe out there!</i>`
+    );
+    return;
+  }
+  const allData = await dbGet('members');
+  if (!allData || typeof allData !== 'object') { await sendTg(chatId, `❌ No members found.`); return; }
+  const recipients = Object.values(allData).filter(m => m.telegramId && String(m.telegramId) !== String(chatId));
+  for (const m of recipients) {
+    await sendTg(m.telegramId, `🌩 <b>Storm Watch DFW</b>\n\n${message}`);
+  }
+  await sendTg(chatId, `✅ Sent to ${recipients.length} member${recipients.length !== 1 ? 's' : ''}.`);
+}
+
 async function handleStop(chatId) {
   const member = await findMember(chatId);
   if (!member) { await sendTg(chatId, notLinkedMsg(chatId)); return; }
@@ -277,8 +298,9 @@ export default async function handler(req, res) {
       case '/setlocation': await handleSetLocation(chatId, args);  break;
       case '/mylocation':  await handleMyLocation(chatId);         break;
       case '/status':      await handleStatus(chatId);             break;
-      case '/stop':        await handleStop(chatId);               break;
-      case '/resume':      await handleResume(chatId);             break;
+      case '/stop':        await handleStop(chatId);                break;
+      case '/resume':      await handleResume(chatId);              break;
+      case '/broadcast':   await handleBroadcast(chatId, args);    break;
     }
   } catch (e) {
     console.error(e);
