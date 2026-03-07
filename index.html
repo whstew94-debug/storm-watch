@@ -579,6 +579,39 @@ function setGPSActive(active) {
 
 let gpsWatchId = null;
 let gpsRetryTimeout = null;
+let gpsHeartbeatInterval = null;
+
+function pushPosition(lat, lon) {
+  if (!currentUser) return;
+  update(ref(db, `members/${currentUser}`), { lat, lon, online: true, lastSeen: Date.now() });
+  forecastLat = lat;
+  forecastLon = lon;
+  if (members[currentUser]) {
+    members[currentUser].lat = lat;
+    members[currentUser].lon = lon;
+  }
+  setGPSActive(true);
+  renderMemberMarkers();
+}
+
+function startGPSHeartbeat() {
+  if (gpsHeartbeatInterval !== null) return;
+  // Poll position every 10 seconds so the map updates like Find My Friends even when stationary
+  gpsHeartbeatInterval = setInterval(() => {
+    navigator.geolocation.getCurrentPosition(
+      pos => pushPosition(pos.coords.latitude, pos.coords.longitude),
+      () => {}, // silent — watchPosition handles errors
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
+    );
+  }, 10000);
+}
+
+function stopGPSHeartbeat() {
+  if (gpsHeartbeatInterval !== null) {
+    clearInterval(gpsHeartbeatInterval);
+    gpsHeartbeatInterval = null;
+  }
+}
 
 function requestGPS() {
   if (!navigator.geolocation) {
@@ -595,6 +628,7 @@ function requestGPS() {
     clearTimeout(gpsRetryTimeout);
     gpsRetryTimeout = null;
   }
+  stopGPSHeartbeat();
   const mobLabel = document.getElementById('mob-gps-label');
   if (mobLabel) mobLabel.textContent = '...';
   document.getElementById('gps-text').textContent = 'Locating...';
@@ -602,22 +636,12 @@ function requestGPS() {
 
   gpsWatchId = navigator.geolocation.watchPosition(
     pos => {
-      const lat = pos.coords.latitude, lon = pos.coords.longitude;
-      if (currentUser) {
-        update(ref(db, `members/${currentUser}`), { lat, lon, online: true });
-        forecastLat = lat;
-        forecastLon = lon;
-        // Update local cache immediately so marker moves without waiting for Firebase round-trip
-        if (members[currentUser]) {
-          members[currentUser].lat = lat;
-          members[currentUser].lon = lon;
-        }
-      }
-      setGPSActive(true);
-      renderMemberMarkers();
+      pushPosition(pos.coords.latitude, pos.coords.longitude);
+      startGPSHeartbeat(); // begin 10s heartbeat once we have a first fix
     },
     err => {
       setGPSActive(false);
+      stopGPSHeartbeat();
       if (mobLabel) mobLabel.textContent = 'GPS';
       if (err.code === 1) {
         // Permission denied — can't retry, offer manual fallback
@@ -632,6 +656,11 @@ function requestGPS() {
     { enableHighAccuracy: true, timeout: Infinity, maximumAge: 0 }
   );
 }
+
+// Mark offline when tab closes
+window.addEventListener('beforeunload', () => {
+  if (currentUser) update(ref(db, `members/${currentUser}`), { online: false });
+});
 
 function offerManualLocation() {
   if (!currentUser) return;
