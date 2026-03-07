@@ -568,10 +568,13 @@ function loadCurrentUser() {
 }
 
 // ─── GPS ─────────────────────────────────────────────────────────────────────
-// Browsers can return IP-based "geolocation" with accuracy of 5–100 km.
-// We reject any fix worse than MAX_ACCURACY_M and warn the user so they
-// know to open the app on their phone instead.
-const MAX_ACCURACY_M = 500;
+// Accuracy tiers (browser-reported, in metres):
+//   GPS outdoors    5 – 30 m   → perfect
+//   WiFi            50 – 500 m → fine
+//   Cell towers   500 – 5 000 m → accepted, dot shows POOR
+//   IP geolocation 10 000 – 100 000 m → REJECTED, warn user
+const REJECT_ACCURACY_M = 10000;  // anything worse than 10 km is an IP guess
+const WARN_ACCURACY_M   =  500;   // show POOR indicator above 500 m
 
 let gpsWatchId = null;
 let gpsRetryTimeout = null;
@@ -582,18 +585,16 @@ function setGPSActive(active, accuracyM) {
   document.getElementById('gps-dot-mobile').classList.toggle('active', active);
   const mobDot   = document.getElementById('mob-gps-dot');
   const mobLabel = document.getElementById('mob-gps-label');
-  if (mobDot)   mobDot.style.background = active ? 'var(--green)' : 'var(--text3)';
-  if (mobLabel) mobLabel.textContent    = active ? 'LIVE' : 'GPS';
+  if (mobDot) mobDot.style.background = active ? 'var(--green)' : 'var(--text3)';
   if (active) {
-    const acc = accuracyM != null ? ` ±${accuracyM < 1000 ? Math.round(accuracyM) + 'm' : (accuracyM/1000).toFixed(1) + 'km'}` : '';
-    document.getElementById('gps-text').textContent = 'GPS active' + acc;
+    const poor = accuracyM != null && accuracyM > WARN_ACCURACY_M;
+    if (mobLabel) mobLabel.textContent = poor ? 'POOR' : 'LIVE';
+    if (mobDot && poor) mobDot.style.background = 'orange';
+    const acc = accuracyM != null ? ` ±${accuracyM < 1000 ? Math.round(accuracyM) + 'm' : (accuracyM / 1000).toFixed(1) + 'km'}` : '';
+    document.getElementById('gps-text').textContent = (poor ? 'GPS (poor)' : 'GPS active') + acc;
+  } else {
+    if (mobLabel) mobLabel.textContent = 'GPS';
   }
-}
-
-// Accept a position only if it is precise enough to be useful.
-// IP-geolocation fixes are typically 5,000–50,000 m accuracy — we reject those.
-function isAccurate(pos) {
-  return pos.coords.accuracy <= MAX_ACCURACY_M;
 }
 
 function pushPosition(pos) {
@@ -612,21 +613,19 @@ function pushPosition(pos) {
   renderMemberMarkers();
 }
 
-function showInaccurateWarning(accuracyM) {
-  const km = (accuracyM / 1000).toFixed(0);
-  document.getElementById('gps-text').textContent = `Inaccurate (±${km}km)`;
+function warnIPGeolocation(accuracyM) {
+  const km = Math.round(accuracyM / 1000);
+  document.getElementById('gps-text').textContent = `GPS blocked (±${km}km)`;
   const mobLabel = document.getElementById('mob-gps-label');
   if (mobLabel) mobLabel.textContent = 'POOR';
   setGPSActive(false);
-  // Only prompt once per session — don't spam them
-  if (!requestGPS._warnedInaccurate) {
-    requestGPS._warnedInaccurate = true;
-    // Give the UI a moment to settle before the alert
+  if (!requestGPS._warnedOnce) {
+    requestGPS._warnedOnce = true;
     setTimeout(() => {
       const fix = confirm(
-        `Your browser returned a location with ±${km} km accuracy — likely an IP guess, not your real position.\n\n` +
-        `For accurate tracking, open Storm Watch on your phone.\n\n` +
-        `Press OK to enter your location manually instead.`
+        `Storm Watch got a ±${km} km location — that's an IP address guess, not your real position.\n\n` +
+        `• For accurate tracking, open the app on your phone.\n` +
+        `• Or press OK to enter your city/ZIP manually.`
       );
       if (fix) offerManualLocation();
     }, 300);
@@ -635,11 +634,9 @@ function showInaccurateWarning(accuracyM) {
 
 function startGPSHeartbeat() {
   if (gpsHeartbeatInterval !== null) return;
-  // Push position every 10 s so markers update continuously like Find My Friends,
-  // even when the device thinks you haven't moved.
   gpsHeartbeatInterval = setInterval(() => {
     navigator.geolocation.getCurrentPosition(
-      pos => { if (isAccurate(pos)) pushPosition(pos); },
+      pos => { if (pos.coords.accuracy <= REJECT_ACCURACY_M) pushPosition(pos); },
       () => {},
       { enableHighAccuracy: true, timeout: 9000, maximumAge: 0 }
     );
@@ -662,7 +659,7 @@ function requestGPS() {
   if (gpsWatchId !== null)      { navigator.geolocation.clearWatch(gpsWatchId); gpsWatchId = null; }
   if (gpsRetryTimeout !== null) { clearTimeout(gpsRetryTimeout); gpsRetryTimeout = null; }
   stopGPSHeartbeat();
-  requestGPS._warnedInaccurate = false;
+  requestGPS._warnedOnce = false;
 
   const mobLabel = document.getElementById('mob-gps-label');
   if (mobLabel) mobLabel.textContent = '...';
@@ -671,10 +668,9 @@ function requestGPS() {
 
   gpsWatchId = navigator.geolocation.watchPosition(
     pos => {
-      if (!isAccurate(pos)) {
-        // Browser returned a coarse IP-based fix — warn and keep waiting.
-        // If the device can eventually get a real GPS/WiFi fix it will fire again.
-        showInaccurateWarning(pos.coords.accuracy);
+      if (pos.coords.accuracy > REJECT_ACCURACY_M) {
+        // IP geolocation — warn but keep the watch alive; a real fix may arrive.
+        warnIPGeolocation(pos.coords.accuracy);
         return;
       }
       pushPosition(pos);
