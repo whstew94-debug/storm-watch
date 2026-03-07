@@ -473,6 +473,26 @@ body.map-active #sidebar-toggle{display:block}
   </div>
 </div>
 
+<!-- Location Modal (replaces prompt() for GPS fallback) -->
+<div id="location-modal" class="modal-overlay hidden">
+  <div class="modal">
+    <div class="modal-title" id="location-modal-title">LOCATION NEEDED</div>
+    <div class="modal-sub" id="location-modal-sub"></div>
+    <!-- Shown only when permission is denied -->
+    <div id="location-settings-help" class="hidden" style="background:rgba(255,165,0,.08);border:1px solid rgba(255,165,0,.3);border-radius:5px;padding:11px;margin-bottom:14px;font-size:12px;color:var(--text2);line-height:1.6">
+      <b style="color:orange">To re-enable on iPhone:</b><br>
+      Settings → Safari → Location → <b>Allow</b><br><br>
+      <b style="color:orange">To re-enable on Android:</b><br>
+      Settings → Apps → Browser → Permissions → Location → <b>Allow</b>
+    </div>
+    <div class="modal-label">ENTER CITY OR ZIP CODE</div>
+    <input type="text" class="modal-input" id="manual-loc-input" placeholder="e.g. Plano TX or 75023"
+      onkeydown="if(event.key==='Enter')submitManualLocation()">
+    <button class="modal-btn primary" onclick="submitManualLocation()">SET MY LOCATION</button>
+    <button class="modal-btn secondary" onclick="hideModal('location-modal')">CANCEL</button>
+  </div>
+</div>
+
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
@@ -653,7 +673,7 @@ function stopGPSHeartbeat() {
 function requestGPS() {
   if (!navigator.geolocation) {
     document.getElementById('gps-text').textContent = 'Not supported';
-    offerManualLocation();
+    offerManualLocation('unsupported');
     return;
   }
   if (gpsWatchId !== null)      { navigator.geolocation.clearWatch(gpsWatchId); gpsWatchId = null; }
@@ -682,7 +702,7 @@ function requestGPS() {
       if (mobLabel) mobLabel.textContent = 'GPS';
       if (err.code === 1) {
         document.getElementById('gps-text').textContent = 'Blocked';
-        offerManualLocation();
+        offerManualLocation('denied');
       } else {
         document.getElementById('gps-text').textContent = 'Retrying...';
         gpsRetryTimeout = setTimeout(() => requestGPS(), 5000);
@@ -698,26 +718,62 @@ window.addEventListener('beforeunload', () => {
   if (currentUser) update(ref(db, `members/${currentUser}`), { online: false });
 });
 
-function offerManualLocation() {
+function offerManualLocation(reason) {
   if (!currentUser) return;
-  const loc = prompt('GPS unavailable. Enter your city or ZIP code to set your location:');
-  if (!loc || !loc.trim()) return;
-  fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(loc.trim())}&format=json&limit=1&countrycodes=us`)
-    .then(r => r.json())
-    .then(d => {
-      if (!d.length) { alert('Location not found. Try a different city or ZIP.'); return; }
-      const lat = parseFloat(d[0].lat), lon = parseFloat(d[0].lon);
-      const city = d[0].display_name?.split(',').slice(0,2).join(',').trim() || loc;
-      update(ref(db, `members/${currentUser}`), { lat, lon, city, online: true });
-      forecastLat = lat; forecastLon = lon;
-      const mobLabel = document.getElementById('mob-gps-label');
-      if (mobLabel) mobLabel.textContent = 'SET';
-      document.getElementById('gps-text').textContent = city;
-      renderMemberMarkers();
-      logEvent('📍', `Location updated to ${city}`);
-    })
-    .catch(() => alert('Could not look up that location. Try again.'));
+  const titleEl = document.getElementById('location-modal-title');
+  const subEl   = document.getElementById('location-modal-sub');
+  const helpEl  = document.getElementById('location-settings-help');
+  if (reason === 'denied') {
+    titleEl.textContent = 'LOCATION BLOCKED';
+    subEl.textContent   = 'Storm Watch needs your location to show you on the map. Enable it in your device settings, or enter your city/ZIP below.';
+    helpEl.classList.remove('hidden');
+  } else {
+    titleEl.textContent = 'LOCATION UNAVAILABLE';
+    subEl.textContent   = 'GPS could not be determined automatically. Enter your city or ZIP code to place yourself on the map.';
+    helpEl.classList.add('hidden');
+  }
+  document.getElementById('manual-loc-input').value = '';
+  document.getElementById('location-modal').classList.remove('hidden');
+  setTimeout(() => document.getElementById('manual-loc-input').focus(), 150);
 }
+
+window.submitManualLocation = async function() {
+  const inp = document.getElementById('manual-loc-input');
+  const loc = inp.value.trim();
+  if (!loc) return;
+  const btn = document.querySelector('#location-modal .modal-btn.primary');
+  btn.textContent = 'LOOKING UP...';
+  btn.disabled = true;
+  try {
+    const r = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(loc)}&format=json&limit=1&countrycodes=us`);
+    const d = await r.json();
+    if (!d.length) {
+      btn.textContent = 'SET MY LOCATION';
+      btn.disabled = false;
+      inp.style.borderColor = 'var(--red)';
+      inp.placeholder = 'Not found — try a different city or ZIP';
+      inp.value = '';
+      return;
+    }
+    const lat  = parseFloat(d[0].lat), lon = parseFloat(d[0].lon);
+    const city = d[0].display_name?.split(',').slice(0, 2).join(',').trim() || loc;
+    update(ref(db, `members/${currentUser}`), { lat, lon, city, online: true, lastSeen: Date.now() });
+    forecastLat = lat; forecastLon = lon;
+    if (members[currentUser]) { members[currentUser].lat = lat; members[currentUser].lon = lon; }
+    const mobLabel = document.getElementById('mob-gps-label');
+    if (mobLabel) mobLabel.textContent = 'SET';
+    document.getElementById('gps-text').textContent = city;
+    hideModal('location-modal');
+    renderMemberMarkers();
+    logEvent('📍', `Location set to ${city}`);
+  } catch {
+    btn.textContent = 'SET MY LOCATION';
+    btn.disabled = false;
+    inp.style.borderColor = 'var(--red)';
+    inp.placeholder = 'Network error — try again';
+    inp.value = '';
+  }
+};
 
 function saveCurrentUser(key, lat, lon) {
   currentUser = key;
