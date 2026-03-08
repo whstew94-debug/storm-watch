@@ -1,0 +1,55 @@
+{
+  "rules": {
+    // ── Storm Watch DFW — Firebase Realtime Database Security Rules ──
+    //
+    // HOW TO DEPLOY:
+    //   Option A (Firebase Console):
+    //     1. Go to console.firebase.google.com → storm-watch-dfw
+    //     2. Realtime Database → Rules tab
+    //     3. Paste everything inside the outer { } below
+    //     4. Publish
+    //
+    //   Option B (Firebase CLI):
+    //     firebase deploy --only database
+    //
+    // WHAT THESE RULES DO:
+    //   • Require a valid Firebase Auth token for every read and write.
+    //     Anonymous sign-in (added to the app) satisfies this — it stops
+    //     unauthenticated REST API bots/scrapers cold.
+    //   • Validate every field's type and length so a malicious member
+    //     cannot store huge blobs, wrong types, or unexpected fields.
+    //   • Any authenticated user can read all members (needed for the map).
+    //   • Any authenticated user can write any member record. This allows
+    //     check-ins and admin removal while keeping the group invite-only
+    //     at the app level. For stricter per-member isolation, add a Cloud
+    //     Function that verifies authUid before accepting writes.
+
+    "members": {
+      ".read": "auth != null",
+      "$memberId": {
+        ".write": "auth != null",
+
+        // When creating or updating, require core fields and validate all.
+        // When deleting (newData doesn't exist), allow it (admin removal).
+        ".validate": "!newData.exists() || newData.hasChildren(['name', 'lat', 'lon', 'online'])",
+
+        "name":         { ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 60" },
+        "city":         { ".validate": "!newData.exists() || (newData.isString() && newData.val().length <= 120)" },
+        "zip":          { ".validate": "!newData.exists() || (newData.isString() && newData.val().length <= 20)" },
+        "lat":          { ".validate": "newData.isNumber() && newData.val() >= -90  && newData.val() <= 90" },
+        "lon":          { ".validate": "newData.isNumber() && newData.val() >= -180 && newData.val() <= 180" },
+        "accuracy":     { ".validate": "!newData.exists() || (newData.isNumber() && newData.val() >= 0)" },
+        "online":       { ".validate": "newData.isBoolean()" },
+        "checkedIn":    { ".validate": "!newData.exists() || newData.isBoolean()" },
+        "lastSeen":     { ".validate": "!newData.exists() || newData.isNumber()" },
+        "joinedAt":     { ".validate": "!newData.exists() || newData.isNumber()" },
+        "alertsPaused": { ".validate": "!newData.exists() || newData.isBoolean()" },
+        "telegramId":   { ".validate": "!newData.exists() || (newData.isString() && newData.val().length <= 30)" },
+        "authUid":      { ".validate": "!newData.exists() || (newData.isString() && newData.val().length <= 128)" },
+
+        // Reject any fields not explicitly listed above
+        "$other": { ".validate": false }
+      }
+    }
+  }
+}

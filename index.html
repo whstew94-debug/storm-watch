@@ -504,6 +504,7 @@ body.map-active #sidebar-toggle{display:block}
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 import { getDatabase, ref, set, get, onValue, push, update } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDVEuqqgaaKoB0eTGD0BWyaZcFNs3-_aFo",
@@ -516,9 +517,17 @@ const firebaseConfig = {
 };
 
 const fbApp = initializeApp(firebaseConfig);
-const db = getDatabase(fbApp);
+const db    = getDatabase(fbApp);
+const fbAuth = getAuth(fbApp);
+let currentAuthUid = null;
 
 // ─── TELEGRAM CONFIG ───────────────────────────────────────────────
+// ⚠ WARNING: This token is visible in page source.
+// Anyone who reads it can send messages as your bot or read bot updates.
+// ACTION REQUIRED:
+//   1. Revoke this token now at t.me/BotFather → /revoke
+//   2. Replace with a new token below, OR (better) move Telegram sending
+//      to a Firebase Cloud Function so the token never reaches the browser.
 const TG_TOKEN = "8660731324:AAFrA2uy0S2Fwg4RRPH3657WlqA36Nd1qI8";
 const TG_API = `https://api.telegram.org/bot${TG_TOKEN}`;
 
@@ -563,13 +572,28 @@ let forecastLat = 33.2148, forecastLon = -97.1331; // default Denton
 let forecastMemberName = 'Your';
 let selectedMemberForModal = null;
 let isAdmin = false;
-const ADMIN_PW = "weatherman";
+// SHA-256 of the admin password — never store the raw password in source.
+// To change it: run  crypto.subtle.digest('SHA-256', new TextEncoder().encode('newpw'))
+// then convert the ArrayBuffer to hex and paste it here.
+const ADMIN_PW_HASH = "1407854592426e4fa28d285b9b06fa867771d677e50ea26c81fda11c8dc796c9";
 const INVITE_CODE = "SW7742";
 
 // ─── INIT ──────────────────────────────────────────────────────────
 window.addEventListener('load', async () => {
   initMap();
   checkURLInvite();
+
+  // Require a valid Firebase auth token before touching the database.
+  // Anonymous sign-in is invisible to the user but gives every legitimate
+  // browser session a signed token — our security rules reject requests
+  // that have no token at all (bots, REST scrapers, etc.).
+  try {
+    const cred = await signInAnonymously(fbAuth);
+    currentAuthUid = cred.user.uid;
+  } catch (e) {
+    console.error('Firebase auth failed:', e);
+  }
+
   loadCurrentUser();
   listenMembers();
   loadAlerts();
@@ -867,7 +891,7 @@ function updateMobileInfobar() {
       memberEl.innerHTML = memberEntries.map(m =>
         `<span style="display:inline-flex;align-items:center;gap:3px;margin-right:6px">
           <span class="mib-dot ${m.online ? 'online' : ''}"></span>
-          <span style="color:${m.online ? 'var(--text)' : 'var(--text3)'}">${m.name.split(' ')[0]}</span>
+          <span style="color:${m.online ? 'var(--text)' : 'var(--text3)'}">${esc(m.name.split(' ')[0])}</span>
         </span>`
       ).join('');
     }
@@ -898,8 +922,8 @@ function renderSidebarMembers() {
     div.innerHTML = `
       <div class="member-dot ${m.online ? 'online' : 'offline'}"></div>
       <div class="member-info">
-        <div class="member-name">${m.name}</div>
-        <div class="member-loc">📍 ${m.city || m.zip || 'Unknown'}</div>
+        <div class="member-name">${esc(m.name)}</div>
+        <div class="member-loc">📍 ${esc(m.city || m.zip || 'Unknown')}</div>
       </div>
       ${m.online ? '<span class="member-badge live">LIVE</span>' : ''}
       ${m.checkedIn ? '<span class="member-badge safe">SAFE</span>' : ''}
@@ -920,10 +944,10 @@ function renderMembersPanel() {
     const isMe = key === currentUser;
     div.innerHTML = `
       <div class="mfc-header">
-        <div class="mfc-avatar">${m.name ? m.name[0].toUpperCase() : '?'}</div>
+        <div class="mfc-avatar">${m.name ? esc(m.name[0].toUpperCase()) : '?'}</div>
         <div>
-          <div class="mfc-name">${m.name}${isMe ? ' <span style="color:var(--cyan);font-size:10px">(YOU)</span>' : ''}</div>
-          <div class="mfc-loc">📍 ${m.city || m.zip || 'Unknown'}</div>
+          <div class="mfc-name">${esc(m.name)}${isMe ? ' <span style="color:var(--cyan);font-size:10px">(YOU)</span>' : ''}</div>
+          <div class="mfc-loc">📍 ${esc(m.city || m.zip || 'Unknown')}</div>
         </div>
       </div>
       <div class="mfc-status">
@@ -957,7 +981,7 @@ async function renderMemberMarkers() {
     const icon = L.divIcon({
       html: `<div style="display:flex;flex-direction:column;align-items:center">
         <div style="background:${m.online ? 'var(--cyan)' : 'var(--text3)'};width:14px;height:14px;border-radius:50%;border:2px solid var(--bg);box-shadow:0 0 ${m.online ? '10px var(--cyan)' : 'none'}"></div>
-        <div style="background:rgba(6,8,16,.85);color:${m.online ? 'var(--cyan)' : 'var(--text2)'};font-size:9px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:1px;padding:1px 4px;border-radius:2px;white-space:nowrap;margin-top:2px;border:1px solid var(--border)">${m.name}</div>
+        <div style="background:rgba(6,8,16,.85);color:${m.online ? 'var(--cyan)' : 'var(--text2)'};font-size:9px;font-family:Barlow Condensed,sans-serif;font-weight:700;letter-spacing:1px;padding:1px 4px;border-radius:2px;white-space:nowrap;margin-top:2px;border:1px solid var(--border)">${esc(m.name)}</div>
       </div>`,
       className: '', iconSize: [60, 30], iconAnchor: [30, 8]
     });
@@ -966,7 +990,7 @@ async function renderMemberMarkers() {
       const s = Math.round((Date.now() - m.lastSeen) / 1000);
       return s < 60 ? `${s}s ago` : s < 3600 ? `${Math.floor(s/60)}m ago` : `${Math.floor(s/3600)}h ago`;
     })() : '';
-    const popup = `<b style="color:#00e5ff">${m.name}</b><br><small>${m.city || m.zip || ''}</small>${acc}${age ? `<br><small style="color:var(--text3)">Updated ${age}</small>` : ''}${m.checkedIn ? '<br><span style="color:#00e676">✓ Checked in safe</span>' : ''}`;
+    const popup = `<b style="color:#00e5ff">${esc(m.name)}</b><br><small>${esc(m.city || m.zip || '')}</small>${acc}${age ? `<br><small style="color:var(--text3)">Updated ${age}</small>` : ''}${m.checkedIn ? '<br><span style="color:#00e676">✓ Checked in safe</span>' : ''}`;
     if (memberMarkers[key]) {
       // Move and restyle existing marker — no flicker, no DOM churn
       memberMarkers[key].setLatLng([lat, lon]);
@@ -1297,6 +1321,13 @@ async function sendDailyForecastToAll() {
   }
 }
 
+// ─── HELPERS ───────────────────────────────────────────────────────
+// Escape user-supplied strings before inserting into innerHTML to prevent XSS.
+// Member names/cities come from Firebase and must be treated as untrusted input.
+function esc(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
 // ─── TAB SWITCHING ─────────────────────────────────────────────────
 const isMobile = () => window.innerWidth <= 768;
 
@@ -1334,9 +1365,11 @@ window.showAdminModal = function() {
   setTimeout(() => document.getElementById('admin-pw-input').focus(), 100);
 };
 
-window.checkAdminPw = function() {
+window.checkAdminPw = async function() {
   const pw = document.getElementById('admin-pw-input').value;
-  if (pw === ADMIN_PW) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(pw));
+  const hash = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+  if (hash === ADMIN_PW_HASH) {
     isAdmin = true;
     document.getElementById('admin-login-section').classList.add('hidden');
     document.getElementById('admin-panel-section').classList.remove('hidden');
@@ -1355,15 +1388,27 @@ function renderAdminMembers() {
     el.innerHTML = '<div style="color:var(--text3);font-size:12px">No members yet.</div>';
     return;
   }
-  el.innerHTML = entries.map(([key, m]) => `
-    <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:4px;margin-bottom:6px">
-      <div>
-        <div style="font-size:13px;font-weight:600;color:var(--text)">${m.name}</div>
-        <div style="font-size:11px;color:var(--text3);font-family:'Share Tech Mono',monospace">📍 ${m.city || m.zip || 'Unknown'} &nbsp;·&nbsp; ${m.online ? '<span style="color:var(--green)">LIVE</span>' : 'OFFLINE'}</div>
-      </div>
-      <button onclick="deleteMember('${key}', '${m.name}')" style="background:rgba(255,23,68,.1);border:1px solid rgba(255,23,68,.4);color:var(--red);padding:4px 10px;border-radius:4px;cursor:pointer;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;letter-spacing:1px">REMOVE</button>
-    </div>
-  `).join('');
+  el.innerHTML = '';
+  entries.forEach(([key, m]) => {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:7px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:4px;margin-bottom:6px';
+    const info = document.createElement('div');
+    const nameEl = document.createElement('div');
+    nameEl.style.cssText = 'font-size:13px;font-weight:600;color:var(--text)';
+    nameEl.textContent = m.name;
+    const locEl = document.createElement('div');
+    locEl.style.cssText = "font-size:11px;color:var(--text3);font-family:'Share Tech Mono',monospace";
+    locEl.innerHTML = `📍 ${esc(m.city || m.zip || 'Unknown')} &nbsp;·&nbsp; ${m.online ? '<span style="color:var(--green)">LIVE</span>' : 'OFFLINE'}`;
+    info.appendChild(nameEl);
+    info.appendChild(locEl);
+    const btn = document.createElement('button');
+    btn.textContent = 'REMOVE';
+    btn.style.cssText = 'background:rgba(255,23,68,.1);border:1px solid rgba(255,23,68,.4);color:var(--red);padding:4px 10px;border-radius:4px;cursor:pointer;font-family:\'Barlow Condensed\',sans-serif;font-weight:700;font-size:12px;letter-spacing:1px';
+    btn.onclick = () => deleteMember(key, m.name);
+    row.appendChild(info);
+    row.appendChild(btn);
+    el.appendChild(row);
+  });
 }
 
 window.deleteMember = async function(memberId, memberName) {
@@ -1424,7 +1469,7 @@ window.doSignup = async function() {
   } catch(e) {}
 
   const memberRef = push(ref(db, 'members'));
-  await set(memberRef, { name, city, zip: locInput, lat, lon, online: true, checkedIn: false, joinedAt: Date.now(), telegramId: telegramId || null });
+  await set(memberRef, { name, city, zip: locInput, lat, lon, online: true, checkedIn: false, joinedAt: Date.now(), telegramId: telegramId || null, authUid: currentAuthUid || null });
   saveCurrentUser(memberRef.key, lat, lon);
   forecastMemberName = 'Your';
   requestGPS(); // Safe here — triggered by user tapping "JOIN THE GROUP"
