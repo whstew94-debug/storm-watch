@@ -67,6 +67,9 @@ body{background:var(--bg);color:var(--text);font-family:'Barlow',sans-serif;heig
 .alert-event{font-size:12px;font-weight:600;color:var(--red)}
 .alert-area{font-size:11px;color:var(--text2);margin-top:2px}
 .no-alert{font-size:12px;color:var(--green);display:flex;align-items:center;gap:5px}
+/* GPS warning banner (shown when browser uses IP geolocation) */
+#gps-banner{position:absolute;top:8px;left:50%;transform:translateX(-50%);background:rgba(30,20,0,.92);border:1px solid orange;border-radius:6px;padding:8px 12px 8px 14px;z-index:1500;display:none;align-items:center;gap:10px;max-width:calc(100vw - 24px);font-size:12px;color:#ffcc44;white-space:nowrap}
+#gps-banner button{background:none;border:none;color:#aaa;font-size:16px;line-height:1;cursor:pointer;padding:0 2px}
 /* Radar legend */
 #radar-legend{position:absolute;bottom:30px;left:10px;background:rgba(6,8,16,.85);border:1px solid var(--border);border-radius:6px;padding:8px 10px;z-index:1000;pointer-events:none}
 #radar-legend-title{font-size:10px;letter-spacing:2px;color:var(--text2);font-family:'Barlow Condensed',sans-serif;text-transform:uppercase;margin-bottom:5px}
@@ -306,6 +309,10 @@ body.map-active #sidebar-toggle{display:block}
     <!-- MAP -->
     <div id="map-panel" class="active">
       <div id="map"></div>
+      <div id="gps-banner">
+        <span id="gps-banner-msg"></span>
+        <button onclick="document.getElementById('gps-banner').style.display='none'" title="Dismiss">✕</button>
+      </div>
       <div id="radar-legend">
         <div id="radar-legend-title">RADAR INTENSITY</div>
         <div id="radar-bar"></div>
@@ -641,14 +648,11 @@ function warnIPGeolocation(accuracyM) {
   setGPSActive(false);
   if (!requestGPS._warnedOnce) {
     requestGPS._warnedOnce = true;
-    setTimeout(() => {
-      const fix = confirm(
-        `Storm Watch got a ±${km} km location — that's an IP address guess, not your real position.\n\n` +
-        `• For accurate tracking, open the app on your phone.\n` +
-        `• Or press OK to enter your city/ZIP manually.`
-      );
-      if (fix) offerManualLocation();
-    }, 300);
+    const banner = document.getElementById('gps-banner');
+    const msg    = document.getElementById('gps-banner-msg');
+    msg.innerHTML = `⚠ Location is IP-based (±${km} km) — not your real position. ` +
+      `<span style="text-decoration:underline;cursor:pointer;color:#ffaa00" onclick="offerManualLocation('unsupported');document.getElementById('gps-banner').style.display='none'">Set manually</span>`;
+    banner.style.display = 'flex';
   }
 }
 
@@ -702,7 +706,8 @@ function requestGPS() {
       if (mobLabel) mobLabel.textContent = 'GPS';
       if (err.code === 1) {
         document.getElementById('gps-text').textContent = 'Blocked';
-        offerManualLocation('denied');
+        if (!requestGPS._suppressDeniedModal) offerManualLocation('denied');
+        requestGPS._suppressDeniedModal = false;
       } else {
         document.getElementById('gps-text').textContent = 'Retrying...';
         gpsRetryTimeout = setTimeout(() => requestGPS(), 5000);
@@ -710,6 +715,10 @@ function requestGPS() {
     },
     { enableHighAccuracy: true, timeout: Infinity, maximumAge: 0 }
   );
+  // Failsafe: start heartbeat after 20 s even if watchPosition hasn't fired a
+  // good fix yet (e.g. browser gave only an IP-based position first). The
+  // heartbeat will push only when accuracy is within threshold.
+  setTimeout(() => startGPSHeartbeat(), 20000);
 }
 
 // Mark offline and stop tracking when the tab closes
@@ -766,6 +775,14 @@ window.submitManualLocation = async function() {
     hideModal('location-modal');
     renderMemberMarkers();
     logEvent('📍', `Location set to ${city}`);
+    // Silently attempt to start real GPS — user may have just enabled it in Settings.
+    // Suppress the denied modal on this retry so we don't immediately re-pop it.
+    setTimeout(() => {
+      if (navigator.geolocation && gpsWatchId === null) {
+        requestGPS._suppressDeniedModal = true;
+        requestGPS();
+      }
+    }, 1500);
   } catch {
     btn.textContent = 'SET MY LOCATION';
     btn.disabled = false;
