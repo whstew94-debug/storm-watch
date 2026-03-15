@@ -28,6 +28,8 @@ async function sendTg(chatId, html) {
 }
 
 const SEVERITY_ICON = { Extreme: '🚨', Severe: '⛈', Moderate: '⚠️', Minor: '🔔' };
+const NOTIFY_SEVERITIES = new Set(['Extreme', 'Severe']);
+const EXCLUDED_EVENTS   = /fire weather|red flag|fire warning|fire watch/i;
 
 // Firebase keys cannot contain . $ # [ ] / — NWS alert IDs are URLs/URNs that
 // contain all of these. Encode to base64url so the key is always safe.
@@ -65,7 +67,12 @@ export default async function handler(req, res) {
       Object.entries(sentRaw).filter(([, exp]) => new Date(exp) > now)
     );
 
-    const newAlerts = alerts.filter(a => !sent[alertKey(a.id)]);
+    const newAlerts = alerts.filter(a =>
+      !sent[alertKey(a.id)] &&
+      NOTIFY_SEVERITIES.has(a.properties.severity) &&
+      a.properties.messageType === 'Alert' &&
+      !EXCLUDED_EVENTS.test(a.properties.event || '')
+    );
     if (newAlerts.length === 0) continue;
 
     for (const alert of newAlerts) {
