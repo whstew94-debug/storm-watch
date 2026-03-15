@@ -1160,16 +1160,21 @@ async function loadAlerts() {
   } catch(e) { console.log('Alert error', e); }
 }
 
-// Severity levels we actually alert about. Wind Advisories, Fire Weather
-// Watches, etc. are informational — only wake people up for Severe/Extreme.
+// Severity levels we actually alert about.
 const NOTIFY_SEVERITIES = new Set(['Extreme', 'Severe']);
 
+// Event types that are never sent via Telegram regardless of severity.
+// Fire weather events are excluded — they're not storm/safety alerts.
+const EXCLUDED_EVENTS = /fire weather|red flag|fire warning|fire watch/i;
+
 async function checkAndSendMemberAlerts(dfwAlerts) {
-  // Only brand-new (messageType === 'Alert') Severe or Extreme events.
+  // Only brand-new (messageType === 'Alert') Severe or Extreme events
+  // that aren't fire-related.
   // 'Update' = replacement notice, 'Cancel' = cancellation — skip both.
   const candidates = dfwAlerts.filter(f =>
     NOTIFY_SEVERITIES.has(f.properties.severity) &&
-    f.properties.messageType === 'Alert'
+    f.properties.messageType === 'Alert' &&
+    !EXCLUDED_EVENTS.test(f.properties.event || '')
   );
   if (!candidates.length) return;
 
