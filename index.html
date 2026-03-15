@@ -503,7 +503,7 @@ body.map-active #sidebar-toggle{display:block}
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-import { getDatabase, ref, set, get, onValue, push, update } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+import { getDatabase, ref, set, get, onValue, push, update, runTransaction } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
 const firebaseConfig = {
@@ -1154,7 +1154,78 @@ async function loadAlerts() {
     renderSidebarAlerts(dfw);
     renderAlertsPanel(dfw);
     updateMobileInfobar();
+
+    // Send Telegram alerts to members — per-location, deduplicated
+    checkAndSendMemberAlerts(dfw);
   } catch(e) { console.log('Alert error', e); }
+}
+
+// Severity levels we actually alert about. Wind Advisories, Fire Weather
+// Watches, etc. are informational — only wake people up for Severe/Extreme.
+const NOTIFY_SEVERITIES = new Set(['Extreme', 'Severe']);
+
+async function checkAndSendMemberAlerts(dfwAlerts) {
+  // Only brand-new (messageType === 'Alert') Severe or Extreme events.
+  // 'Update' = replacement notice, 'Cancel' = cancellation — skip both.
+  const candidates = dfwAlerts.filter(f =>
+    NOTIFY_SEVERITIES.has(f.properties.severity) &&
+    f.properties.messageType === 'Alert'
+  );
+  if (!candidates.length) return;
+
+  const snap = await get(ref(db, 'members'));
+  if (!snap.exists()) return;
+
+  const memberList = [];
+  snap.forEach(c => {
+    const m = c.val();
+    if (m.telegramId && m.lat && m.lon && !m.alertsPaused) {
+      memberList.push({ id: c.key, ...m });
+    }
+  });
+  if (!memberList.length) return;
+
+  for (const member of memberList) {
+    // Ask NWS which of our candidates actually affect this member's exact point.
+    let memberAlerts = candidates; // fallback: assume all DFW alerts apply
+    try {
+      const r = await fetch(
+        `https://api.weather.gov/alerts/active?point=${member.lat},${member.lon}`
+      );
+      const d = await r.json();
+      const ids = new Set((d.features || []).map(f => f.id));
+      memberAlerts = candidates.filter(f => ids.has(f.id));
+    } catch (_) { /* NWS point API failed — fall back to DFW-wide list */ }
+
+    for (const alert of memberAlerts) {
+      // Sanitise the NWS ID into a valid Firebase key
+      const alertKey = alert.id.replace(/[^a-zA-Z0-9_-]/g, '_').slice(-80);
+      const sentRef  = ref(db, `alertsSent/${alertKey}/${member.id}`);
+
+      // Atomic claim: only the first browser tab to write null→timestamp wins.
+      // Every other open tab will see an existing value and skip.
+      const { committed } = await runTransaction(sentRef, cur =>
+        cur === null ? Date.now() : undefined
+      );
+      if (!committed) continue; // another tab already sent this one
+
+      const p       = alert.properties;
+      const icon    = p.severity === 'Extreme' ? '🚨' : '⚠️';
+      const expires = p.expires
+        ? new Date(p.expires).toLocaleString('en-US', {
+            month: 'short', day: 'numeric',
+            hour: '2-digit', minute: '2-digit', timeZoneName: 'short'
+          })
+        : 'Unknown';
+      const msg =
+        `${icon} <b>${p.event}</b>\n` +
+        `📍 ${member.city || member.zip || 'Your area'}\n\n` +
+        `${p.headline || p.description?.substring(0, 300) || ''}\n\n` +
+        `⏰ <b>Until:</b> ${expires}\n\n` +
+        `<i>Storm Watch DFW</i>`;
+      sendTelegram(member.telegramId, msg);
+    }
+  }
 }
 
 function renderSidebarAlerts(alerts) {

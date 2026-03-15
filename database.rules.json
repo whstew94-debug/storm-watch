@@ -50,6 +50,20 @@
         // Reject any fields not explicitly listed above
         "$other": { ".validate": false }
       }
+    },
+
+    // Deduplication log for Telegram alert sends.
+    // Each entry is alertsSent/{alertKey}/{memberId} = timestamp (number).
+    // The app uses a Firebase transaction to atomically claim each send slot
+    // so only one browser tab fires each alert per member.
+    "alertsSent": {
+      ".read": "auth != null",
+      "$alertKey": {
+        "$memberId": {
+          ".write": "auth != null",
+          ".validate": "newData.isNumber()"
+        }
+      }
     }
   }
 }
